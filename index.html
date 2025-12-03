@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prof Lingva | Enterprise AI Suite</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                50: '#FFF5F5',   // Very light red background
+                100: '#FFE3E3',  // Light red
+                200: '#FFC9C9',
+                300: '#FFA3A3',
+                400: '#FF6B6B',
+                500: '#E31E24',  // Prof Lingva Main RED
+                600: '#C41217',  // Darker Red
+                700: '#A30F13',
+                800: '#851115',
+                900: '#1A1A1A',  // Corporate Black/Dark Grey
+                950: '#000000',
+              },
+              slate: {
+                850: '#1f2937', // Custom dark for contrast
+                900: '#111827',
+              }
+            },
+            fontFamily: {
+              sans: ['Inter', 'Roboto', 'system-ui', 'sans-serif'],
+              display: ['Oswald', 'Inter', 'sans-serif'], // For headings
+            }
+          }
+        }
+      }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Oswald:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+      body { font-family: 'Inter', sans-serif; }
+      h1, h2, h3, h4 { font-family: 'Inter', sans-serif; letter-spacing: -0.02em; }
+      .font-display { font-family: 'Oswald', sans-serif; }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
+    "docx": "https://aistudiocdn.com/docx@^9.5.1",
+    "file-saver": "https://aistudiocdn.com/file-saver@^2.0.5",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "pdfjs-dist": "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/+esm"
+  }
+}
+</script>
+</head>
+  <body class="bg-gray-50 text-slate-900 antialiased selection:bg-brand-500 selection:text-white">
+    <div id="root"></div>
+  </body>
+</html>
