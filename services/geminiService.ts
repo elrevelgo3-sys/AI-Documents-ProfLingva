@@ -88,7 +88,7 @@ export const analyzeDocument = async (fileOrBlob: File | Blob): Promise<Structur
     const base64Data = await fileToGenerativePart(fileOrBlob);
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash', // Исправил на стабильную версию. Если работает 2.5 - верни 2.5
+      model: 'gemini-2.5-flash', // Исправил на стабильную версию. Если работает 2.5 - верни 2.5
       contents: {
         parts: [
           { inlineData: base64Data },
@@ -124,7 +124,7 @@ Rules:
 `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
       contents: {
         parts: [{ text: text }]
       },
