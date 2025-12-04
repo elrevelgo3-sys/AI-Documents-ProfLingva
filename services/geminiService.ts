@@ -1,18 +1,37 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import { StructuredDocument } from '../types';
 
-// Helper to ensure API key exists and handle proxy configuration
+// Helper to safely get Client instance
 const getClient = () => {
-  const proxyUrl = localStorage.getItem('gemini_proxy_url');
-  const apiKey = process.env.API_KEY || 'dummy_key_for_proxy'; // If proxy is used, key might be injected by proxy, but SDK needs string.
+  const proxyUrl = typeof window !== 'undefined' ? localStorage.getItem('gemini_proxy_url') : null;
 
-  const config: any = { apiKey: apiKey };
+  // The API key must be obtained exclusively from the environment variable process.env.API_KEY.
+  // We assume process.env.API_KEY is pre-configured and accessible via Vite's define plugin.
+  let apiKey = '';
+  
+  try {
+    // Safe access in case process is somehow undefined despite Vite config
+    if (typeof process !== 'undefined' && process.env) {
+      apiKey = process.env.API_KEY || '';
+    }
+  } catch (e) {
+    console.warn("Error accessing process.env", e);
+  }
+
+  // If using a proxy, the key might be handled by the proxy server.
+  // In that case, we can use a placeholder if process.env.API_KEY is not set on the client.
+  if (proxyUrl && !apiKey) {
+      apiKey = 'dummy_key_for_proxy';
+  }
+
+  if (!apiKey) {
+      console.warn("API_KEY not found in process.env. Please ensure it is configured in Vercel Environment Variables as GOOGLE_API_KEY or API_KEY.");
+  }
+
+  const config: any = { apiKey: apiKey || 'MISSING_KEY' };
   
   if (proxyUrl) {
       config.baseUrl = proxyUrl;
-  } else if (!process.env.API_KEY) {
-      // If no proxy and no local key, throw.
-      throw new Error("API_KEY environment variable is missing");
   }
 
   return new GoogleGenAI(config);
@@ -84,8 +103,6 @@ export const analyzeDocument = async (fileOrBlob: File | Blob): Promise<Structur
   const base64Data = await fileToGenerativePart(fileOrBlob);
   
   // Using gemini-2.5-flash as it is reliable for coordinates. 
-  // 3-pro sometimes hallucinates coordinates in zero-shot without tools.
-  // Sticking to 2.5-flash for reliability or upgrade to 1.5-pro if needed.
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: {

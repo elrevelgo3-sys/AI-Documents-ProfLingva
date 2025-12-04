@@ -11,26 +11,26 @@
           extend: {
             colors: {
               brand: {
-                50: '#FFF5F5',   // Very light red background
-                100: '#FFE3E3',  // Light red
+                50: '#FFF5F5',   
+                100: '#FFE3E3',  
                 200: '#FFC9C9',
                 300: '#FFA3A3',
                 400: '#FF6B6B',
-                500: '#E31E24',  // Prof Lingva Main RED
-                600: '#C41217',  // Darker Red
+                500: '#E31E24',  
+                600: '#C41217',  
                 700: '#A30F13',
                 800: '#851115',
-                900: '#1A1A1A',  // Corporate Black/Dark Grey
+                900: '#1A1A1A',  
                 950: '#000000',
               },
               slate: {
-                850: '#1f2937', // Custom dark for contrast
+                850: '#1f2937', 
                 900: '#111827',
               }
             },
             fontFamily: {
               sans: ['Inter', 'Roboto', 'system-ui', 'sans-serif'],
-              display: ['Oswald', 'Inter', 'sans-serif'], // For headings
+              display: ['Oswald', 'Inter', 'sans-serif'], 
             }
           }
         }
@@ -42,22 +42,25 @@
       h1, h2, h3, h4 { font-family: 'Inter', sans-serif; letter-spacing: -0.02em; }
       .font-display { font-family: 'Oswald', sans-serif; }
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
     "docx": "https://aistudiocdn.com/docx@^9.5.1",
     "file-saver": "https://aistudiocdn.com/file-saver@^2.0.5",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "pdfjs-dist": "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/+esm"
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "pdfjs-dist": "https://aistudiocdn.com/pdfjs-dist@^5.4.449",
+    "vite": "https://aistudiocdn.com/vite@^7.2.6",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
   }
 }
 </script>
 </head>
   <body class="bg-gray-50 text-slate-900 antialiased selection:bg-brand-500 selection:text-white">
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
