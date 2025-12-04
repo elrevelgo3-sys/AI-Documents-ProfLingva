@@ -13,20 +13,15 @@ export default async function handler(req, res) {
   }
 
   // 2. Resolve Google API Key
-  // Prioritize the key sent by the client SDK (in query or header), fall back to server env.
-  let apiKey = req.query.key;
-  
-  // If no key in query, or if it's the placeholder from geminiService
-  if (!apiKey || apiKey === 'dummy_key_for_proxy' || apiKey === 'MISSING_KEY') {
-      apiKey = process.env.GOOGLE_API_KEY;
-  }
+  // Prioritize the key from server environment (Secure)
+  const apiKey = process.env.GOOGLE_API_KEY;
 
   if (!apiKey) {
     console.error("PROXY ERROR: GOOGLE_API_KEY is not set in environment variables.");
     return res.status(500).json({ 
         error: {
             code: 500,
-            message: 'Server Configuration Error: GOOGLE_API_KEY is missing. Please add it to Vercel Environment Variables.',
+            message: 'Server Configuration Error: GOOGLE_API_KEY is missing on Vercel.',
             status: 'INTERNAL_SERVER_ERROR'
         }
     });
@@ -34,11 +29,9 @@ export default async function handler(req, res) {
 
   // 3. Construct Target URL
   // The SDK appends the path to the baseUrl.
-  // We need to strip the '/api/proxy' prefix to get the real Google path.
-  
   let googlePath = req.url;
   
-  // Remove the /api/proxy prefix if it exists
+  // Remove the /api/proxy prefix if it exists to get the real path
   if (googlePath.startsWith('/api/proxy')) {
       googlePath = googlePath.replace('/api/proxy', '');
   }
@@ -49,22 +42,23 @@ export default async function handler(req, res) {
 
   const urlObj = new URL(targetBase + googlePath);
   
-  // Override the key with the real server-side key
+  // Always override the key with the server-side key
   urlObj.searchParams.set('key', apiKey);
 
   const targetUrl = urlObj.toString();
 
   try {
     // 4. Forward the Request
-    // We strictly use the body from the request.
+    const headers = {
+        'Content-Type': 'application/json',
+        'x-goog-api-client': req.headers['x-goog-api-client'] || 'genai-js-proxy',
+    };
+
     const googleResponse = await fetch(targetUrl, {
       method: req.method,
-      headers: {
-        'Content-Type': 'application/json',
-        // Forward client info if present
-        'x-goog-api-client': req.headers['x-goog-api-client'] || 'genai-js/1.0',
-      },
-      // Pass body directly if it exists
+      headers: headers,
+      // Pass body directly. Vercel automatically parses JSON bodies, so strictly we should stringify it back.
+      // If req.body is already a string (rare in Vercel functions for JSON types), use it as is.
       body: req.method === 'POST' ? JSON.stringify(req.body) : undefined,
     });
 

@@ -36,7 +36,6 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
       const page = await pdf.getPage(pageNum);
       const viewport = page.getViewport({ scale: 1.0 }); // 1pt = 1px at scale 1
       const pageHeight = viewport.height;
-      const pageWidth = viewport.width;
       
       const textContent = await page.getTextContent();
       const items = textContent.items as TextItem[];
@@ -88,8 +87,9 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
 
       // 3. Process Lines into Tables or Paragraphs (Adaptive Grid)
       
-      // Use a smaller gap threshold to detect columns better
-      const GAP_THRESHOLD = 18; 
+      // Use dynamic threshold based on average font size? 
+      // For now, fixed 18-20 is decent for typical 10-12pt font.
+      const GAP_THRESHOLD = 20; 
 
       const processLinesToChildren = (targetLines: ProcessedLine[]) => {
           const docxChildren: any[] = [];
@@ -131,6 +131,10 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
                                   font: "Arial"
                               })]
                           })],
+                          width: {
+                              size: 100 / columns.length, // Distribute evenly for now, better than collapsing
+                              type: WidthType.PERCENTAGE
+                          },
                           borders: {
                               top: { style: BorderStyle.NONE, size: 0 },
                               bottom: { style: BorderStyle.NONE, size: 0 },
@@ -174,8 +178,9 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
                   const fontSize = Math.sqrt((firstItem.transform[0] ** 2) + (firstItem.transform[1] ** 2));
 
                   // Calculate indentation (Twips: 1pt = 20twips)
-                  // Use 12 as a multiplier to match Word's visual scale better
-                  const indentLeft = Math.max(0, Math.round(startX * 12)); 
+                  // Use 20 as a multiplier to match Word's standard (1pt = 20 twips)
+                  // This fixes the layout shifting/squashing issue.
+                  const indentLeft = Math.max(0, Math.round(startX * 20)); 
 
                   docxChildren.push(new Paragraph({
                       children: [new TextRun({
@@ -205,7 +210,7 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
                  margin: {
                      top: 720,
                      bottom: 720,
-                     left: 720,
+                     left: 720, // Reduced default margins because we use indentation
                      right: 720
                  }
              }

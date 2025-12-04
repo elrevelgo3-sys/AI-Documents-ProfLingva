@@ -3,47 +3,44 @@ import { StructuredDocument } from '../types';
 
 // Helper to safely get Client instance
 const getClient = () => {
-  let proxyUrl = null;
-  
-  // 1. Check Manual Override from Settings
-  if (typeof window !== 'undefined') {
-      proxyUrl = localStorage.getItem('gemini_proxy_url');
-  }
+  let proxyUrl: string | null = null;
+  let apiKey = '';
 
-  // 2. Auto-Detect / Default to Proxy in Production
-  if (typeof window !== 'undefined' && !proxyUrl) {
+  // 1. Determine Proxy URL
+  if (typeof window !== 'undefined') {
       const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       
-      // If we are NOT on localhost, assume we have the serverless backend available (Vercel)
-      // This forces the app to use the proxy in production, bypassing Google's geo-blocks.
       if (!isLocalhost) {
-          proxyUrl = '/api/proxy'; 
-          console.log("Production environment detected. Using Serverless Proxy.");
+          // FORCE Proxy in Production (Vercel)
+          // This ensures the browser NEVER calls googleapis.com directly, bypassing regional blocks.
+          proxyUrl = '/api/proxy';
+          console.log("Production mode: Enforcing /api/proxy");
+      } else {
+          // In localhost, allow manual override for testing
+          proxyUrl = localStorage.getItem('gemini_proxy_url');
       }
   }
 
-  // 3. Resolve API Key
-  let apiKey = '';
-  
-  // Try to get key from build-time injection (vite.config.ts)
-  try {
-      // @ts-ignore
-      apiKey = process.env.API_KEY || '';
-  } catch (e) {
-      // Ignore reference errors in browser
-  }
-
-  // If we are using the proxy, we don't need the real key on the client.
-  // The proxy (api/proxy.js) will inject the server-side GOOGLE_API_KEY.
-  if (proxyUrl && !apiKey) {
+  // 2. Resolve API Key
+  // If we use the proxy, we DO NOT need the real key on the client. 
+  // We send a dummy key to satisfy the SDK's client-side validation.
+  if (proxyUrl) {
       apiKey = 'dummy_key_for_proxy';
+  } else {
+      // Fallback for localhost without proxy (requires VPN)
+      try {
+          // @ts-ignore
+          apiKey = process.env.API_KEY || '';
+      } catch (e) {}
   }
 
-  if (!apiKey && !proxyUrl) {
-      console.warn("CRITICAL: No API Key found and no Proxy configured. Direct calls to Google will fail.");
+  if (!apiKey) {
+      console.warn("CRITICAL: No API Key found and no Proxy configured.");
+      // We pass a placeholder to avoid immediate crash, but the call will fail if not intercepted.
+      apiKey = 'MISSING_KEY';
   }
 
-  const config: any = { apiKey: apiKey || 'MISSING_KEY' };
+  const config: any = { apiKey: apiKey };
   
   if (proxyUrl) {
       config.baseUrl = proxyUrl;
@@ -118,7 +115,6 @@ export const analyzeDocument = async (fileOrBlob: File | Blob): Promise<Structur
   const base64Data = await fileToGenerativePart(fileOrBlob);
   
   // Using gemini-2.5-flash as it is reliable for coordinates. 
-  // Can be upgraded to gemini-1.5-pro or gemini-3-pro-preview if higher reasoning is needed.
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: {
