@@ -16,29 +16,34 @@ export default async function handler(req, res) {
   // Prioritize the key sent by the client SDK (in query or header), fall back to server env.
   let apiKey = req.query.key;
   
-  // If no key in query, check if we have one in server environment
-  if (!apiKey || apiKey === 'dummy_key_for_proxy') {
+  // If no key in query, or if it's the placeholder from geminiService
+  if (!apiKey || apiKey === 'dummy_key_for_proxy' || apiKey === 'MISSING_KEY') {
       apiKey = process.env.GOOGLE_API_KEY;
   }
 
   if (!apiKey) {
     return res.status(500).json({ 
-        error: 'Configuration Error: No API Key provided by client and GOOGLE_API_KEY not set on server.' 
+        error: 'Configuration Error: No API Key provided. Ensure GOOGLE_API_KEY is set in Vercel Environment Variables.' 
     });
   }
 
   // 3. Construct Target URL
-  // The incoming req.url includes the query string.
-  // Example incoming: /api/proxy/v1beta/models/gemini-pro:generateContent?key=...
-  // We want: https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=REAL_KEY
-
-  // Strip '/api/proxy' from the start of the path
-  const path = req.url.replace(/^\/api\/proxy/, '');
+  // The SDK appends the path to the baseUrl.
+  // We need to strip the '/api/proxy' prefix to get the real Google path.
+  // Example req.url: /api/proxy/v1beta/models/gemini-2.5-flash:generateContent?key=dummy
+  
+  let googlePath = req.url;
+  
+  // Remove the /api/proxy prefix if it exists
+  if (googlePath.startsWith('/api/proxy')) {
+      googlePath = googlePath.replace('/api/proxy', '');
+  }
   
   // Ensure we don't duplicate the key in the query params
-  const urlObj = new URL('https://generativelanguage.googleapis.com' + path);
+  const targetBase = 'https://generativelanguage.googleapis.com';
+  const urlObj = new URL(targetBase + googlePath);
   
-  // Update/Set the key
+  // Override the key with the real server-side key
   urlObj.searchParams.set('key', apiKey);
 
   const targetUrl = urlObj.toString();
@@ -55,11 +60,10 @@ export default async function handler(req, res) {
       body: req.method === 'POST' ? JSON.stringify(req.body) : undefined,
     });
 
-    // 5. Return the Response
     const data = await googleResponse.json();
 
     if (!googleResponse.ok) {
-        console.error('Google API Error:', data);
+        console.error('Google API Error via Proxy:', data);
         return res.status(googleResponse.status).json(data);
     }
 

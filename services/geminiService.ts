@@ -3,29 +3,44 @@ import { StructuredDocument } from '../types';
 
 // Helper to safely get Client instance
 const getClient = () => {
-  const proxyUrl = typeof window !== 'undefined' ? localStorage.getItem('gemini_proxy_url') : null;
-
-  // The API key must be obtained exclusively from the environment variable process.env.API_KEY.
-  // We assume process.env.API_KEY is pre-configured and accessible via Vite's define plugin.
-  let apiKey = '';
+  let proxyUrl = null;
   
-  try {
-    // Safe access in case process is somehow undefined despite Vite config
-    if (typeof process !== 'undefined' && process.env) {
-      apiKey = process.env.API_KEY || '';
-    }
-  } catch (e) {
-    console.warn("Error accessing process.env", e);
+  // 1. Check Manual Override from Settings
+  if (typeof window !== 'undefined') {
+      proxyUrl = localStorage.getItem('gemini_proxy_url');
   }
 
-  // If using a proxy, the key might be handled by the proxy server.
-  // In that case, we can use a placeholder if process.env.API_KEY is not set on the client.
+  // 2. Auto-Detect Vercel Environment
+  // If we are running on Vercel and no manual proxy is set, force use of the local serverless proxy.
+  // This solves the issue of missing API keys on the client and CORS/Geo-blocking.
+  if (typeof window !== 'undefined' && !proxyUrl) {
+      if (window.location.hostname.includes('vercel.app')) {
+          // Use relative path which Vercel rewrites to /api/proxy
+          proxyUrl = '/api/proxy'; 
+          console.log("Auto-detected Vercel environment. Switching to Serverless Proxy.");
+      }
+  }
+
+  // 3. Resolve API Key
+  let apiKey = '';
+  
+  // Try to get key from build-time injection (vite.config.ts)
+  // Accessing process.env.API_KEY directly because we defined it in Vite config
+  try {
+      // @ts-ignore
+      apiKey = process.env.API_KEY || '';
+  } catch (e) {
+      // Ignore reference errors
+  }
+
+  // If we are using the proxy, we don't need the real key on the client.
+  // The proxy (api/proxy.js) will inject the server-side GOOGLE_API_KEY.
   if (proxyUrl && !apiKey) {
       apiKey = 'dummy_key_for_proxy';
   }
 
-  if (!apiKey) {
-      console.warn("API_KEY not found in process.env. Please ensure it is configured in Vercel Environment Variables as GOOGLE_API_KEY or API_KEY.");
+  if (!apiKey && !proxyUrl) {
+      console.warn("CRITICAL: No API Key found and no Proxy configured. Direct calls to Google will fail.");
   }
 
   const config: any = { apiKey: apiKey || 'MISSING_KEY' };
