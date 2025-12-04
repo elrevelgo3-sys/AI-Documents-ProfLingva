@@ -102,18 +102,21 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
         'justify': AlignmentType.JUSTIFIED,
       };
       
-      const align = alignmentMap[element.style.alignment] || AlignmentType.LEFT;
-      const color = element.style.color.replace('#', '');
-      const size = (element.style.font_size || 11) * 2; // DOCX uses half-points. Default to 11pt if missing.
+      const align = alignmentMap[element.style?.alignment] || AlignmentType.LEFT;
+      // Safe color access
+      const colorRaw = element.style?.color || '000000';
+      const color = colorRaw.replace('#', '');
+      
+      const size = (element.style?.font_size || 11) * 2; // DOCX uses half-points. Default to 11pt if missing.
 
       // Apply robust styling based on Gemini's analysis
       const textRun = new TextRun({
-        text: element.content,
-        bold: element.style.bold,
-        italics: element.style.italic,
+        text: element.content || '',
+        bold: element.style?.bold || false,
+        italics: element.style?.italic || false,
         color: color !== '000000' ? color : undefined, // Only apply color if not black to save file size/complexity
         size: size,
-        font: element.style.font_name || 'Arial', // Fallback to Arial which is standard
+        font: element.style?.font_name || 'Arial', // Fallback to Arial which is standard
       });
 
       if (element.type === ElementType.TABLE && element.data?.rows) {
@@ -122,7 +125,7 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
             children: rowContent.map(cellText => 
               new TableCell({
                 children: [new Paragraph({ 
-                    children: [new TextRun({ text: cellText, size: 20 })], // Default table font 10pt
+                    children: [new TextRun({ text: cellText || '', size: 20 })], // Default table font 10pt
                 })],
                 width: { size: 100 / rowContent.length, type: WidthType.PERCENTAGE },
                 borders: {
@@ -154,13 +157,16 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
               const aspectRatio = croppedImage.height / croppedImage.width;
               const targetHeight = targetWidth * aspectRatio;
 
+              // DOCX library expects pure base64 string, not data URI
+              const cleanBase64 = croppedImage.dataUrl.split(',')[1];
+
               children.push(new Paragraph({
                   children: [
                       new ImageRun({
-                          data: croppedImage.dataUrl,
+                          data: cleanBase64,
                           transformation: { width: targetWidth, height: targetHeight },
                           type: "png"
-                      })
+                      } as any) // Type cast to avoid TS errors in some versions
                   ],
                   alignment: align,
                   spacing: { before: 100, after: 100 }
@@ -241,7 +247,7 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
     }],
   });
 
-  const docName = originalFilename.replace(/\.[^/.]+$/, "") + ".docx";
+  const docName = (originalFilename || 'document').replace(/\.[^/.]+$/, "") + ".docx";
   const blob = await Packer.toBlob(doc);
   saveAs(blob, docName);
 };
