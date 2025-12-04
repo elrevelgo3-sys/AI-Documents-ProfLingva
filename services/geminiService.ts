@@ -7,49 +7,42 @@ const getClient = () => {
   let apiKey = '';
 
   if (typeof window !== 'undefined') {
-    const isLocalhost =
-      window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1';
-
-    if (!isLocalhost) {
-      proxyUrl = '/api/proxy'; // как у тебя сейчас
-      console.log('Production mode: Enforcing /api/proxy');
-    } else {
-      proxyUrl = localStorage.getItem('gemini_proxy_url');
-    }
+      const hostname = window.location.hostname;
+      const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+      
+      if (!isLocalhost) {
+          // PRODUCTION: Always use the Vercel proxy.
+          // This bypasses geo-blocking and hides the API key.
+          proxyUrl = '/api/proxy';
+      } else {
+          // LOCAL: Check localStorage for manual proxy override
+          proxyUrl = localStorage.getItem('gemini_proxy_url');
+      }
   }
 
+  // If we are using a proxy, we use a dummy key on the client.
+  // The real key is injected securely by the server-side proxy.
   if (proxyUrl) {
-    apiKey = 'dummy_key_for_proxy';
+      apiKey = 'dummy_key_for_proxy';
   } else {
-    try {
-      // @ts-ignore
-      apiKey = process.env.API_KEY || '';
-    } catch (e) {}
+      // Fallback for localhost without proxy (Direct Google Connection)
+      try {
+          // @ts-ignore
+          apiKey = process.env.API_KEY || '';
+      } catch (e) {}
   }
 
-  if (!apiKey) {
-    console.warn('CRITICAL: No API Key found and no Proxy configured.');
-    apiKey = 'MISSING_KEY';
-  }
+  // Basic validation to prevent instant crash
+  if (!apiKey) apiKey = 'MISSING_KEY';
 
-  const config: any = { apiKey };
-
+  const config: any = { apiKey: apiKey };
+  
   if (proxyUrl) {
-    const baseUrl = proxyUrl.startsWith('http')
-      ? proxyUrl
-      : (typeof window !== 'undefined'
-          ? window.location.origin + proxyUrl
-          : proxyUrl);
-
-    config.httpOptions = {
-      baseUrl,            // ВАЖНО: именно тут
-    };
+      config.baseUrl = proxyUrl;
   }
 
   return new GoogleGenAI(config);
 };
-
 
 // --- Document Analysis (Upgraded to Gemini 3 Pro for better structure) ---
 

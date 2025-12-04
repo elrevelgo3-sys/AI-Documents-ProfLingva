@@ -13,7 +13,6 @@ export default async function handler(req, res) {
   }
 
   // 2. Resolve Google API Key
-  // Prioritize the key from server environment (Secure)
   const apiKey = process.env.GOOGLE_API_KEY;
 
   if (!apiKey) {
@@ -27,38 +26,62 @@ export default async function handler(req, res) {
     });
   }
 
-  // 3. Construct Target URL
-  // The SDK appends the path to the baseUrl.
-  let googlePath = req.url;
-  
-  // Remove the /api/proxy prefix if it exists to get the real path
-  if (googlePath.startsWith('/api/proxy')) {
-      googlePath = googlePath.replace('/api/proxy', '');
-  }
-  
-  const targetBase = 'https://generativelanguage.googleapis.com';
-  // Ensure we don't duplicate slashes
-  if (!googlePath.startsWith('/')) googlePath = '/' + googlePath;
-
-  const urlObj = new URL(targetBase + googlePath);
-  
-  // Always override the key with the server-side key
-  urlObj.searchParams.set('key', apiKey);
-
-  const targetUrl = urlObj.toString();
-
   try {
+    // 3. Construct Target URL
+    const targetBase = 'https://generativelanguage.googleapis.com';
+    
+    // Determine the path. 
+    // Vercel rewrites map /api/proxy/:path* -> /api/proxy?path=:path*
+    let googlePath = '';
+
+    if (req.query && req.query.path) {
+        // If Vercel put the path in the query params
+        const p = Array.isArray(req.query.path) ? req.query.path.join('/') : req.query.path;
+        googlePath = '/' + p.replace(/^\/+/, ''); // Ensure single leading slash
+    } else {
+        // Fallback: extract from req.url if no query param (e.g. local dev)
+        googlePath = req.url.replace('/api/proxy', '');
+        // Remove query params from the path string itself if they exist, 
+        // as we will reconstruct them
+        const qIndex = googlePath.indexOf('?');
+        if (qIndex !== -1) {
+            googlePath = googlePath.substring(0, qIndex);
+        }
+    }
+
+    // Ensure path starts with /
+    if (!googlePath.startsWith('/')) googlePath = '/' + googlePath;
+
+    const urlObj = new URL(targetBase + googlePath);
+    
+    // Copy original query params (except 'path')
+    const incomingUrlObj = new URL('http://localhost' + req.url);
+    incomingUrlObj.searchParams.forEach((value, key) => {
+        if (key !== 'path') {
+            urlObj.searchParams.append(key, value);
+        }
+    });
+
+    // CRITICAL: Force the API key
+    urlObj.searchParams.set('key', apiKey);
+    
+    // CRITICAL: Ensure 'path' param is gone (Google API rejects it)
+    urlObj.searchParams.delete('path');
+
+    const targetUrl = urlObj.toString();
+    // console.log(`Proxying to: ${targetUrl.replace(apiKey, 'HIDDEN_KEY')}`);
+
     // 4. Forward the Request
     const headers = {
         'Content-Type': 'application/json',
-        'x-goog-api-client': req.headers['x-goog-api-client'] || 'genai-js-proxy',
+        // Pass the client version header if present
+        ...(req.headers['x-goog-api-client'] && { 'x-goog-api-client': req.headers['x-goog-api-client'] }),
     };
 
     const googleResponse = await fetch(targetUrl, {
       method: req.method,
       headers: headers,
-      // Pass body directly. Vercel automatically parses JSON bodies, so strictly we should stringify it back.
-      // If req.body is already a string (rare in Vercel functions for JSON types), use it as is.
+      // Pass body directly
       body: req.method === 'POST' ? JSON.stringify(req.body) : undefined,
     });
 

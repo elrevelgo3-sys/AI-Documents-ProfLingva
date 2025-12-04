@@ -86,16 +86,13 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
       });
 
       // 3. Process Lines into Tables or Paragraphs (Adaptive Grid)
-      
-      // Use dynamic threshold based on average font size? 
-      // For now, fixed 18-20 is decent for typical 10-12pt font.
-      const GAP_THRESHOLD = 20; 
+      const GAP_THRESHOLD = 25; 
 
       const processLinesToChildren = (targetLines: ProcessedLine[]) => {
           const docxChildren: any[] = [];
           
           for (const line of targetLines) {
-              // Analyze gaps
+              // Analyze gaps to detect columns
               const columns: TextItem[][] = [];
               let currentColumn: TextItem[] = [line.items[0]];
               
@@ -103,7 +100,7 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
                   const prev = line.items[i-1];
                   const curr = line.items[i];
                   
-                  // Use precise width if available, otherwise estimate
+                  // Calculate gap
                   const prevWidth = prev.width > 0 ? prev.width : (prev.str.length * 4.5);
                   const prevEndX = prev.transform[4] + prevWidth; 
                   const currStartX = curr.transform[4];
@@ -119,8 +116,11 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
 
               if (columns.length > 1) {
                   // --- CASE A: Multi-column line (Use Invisible Table) ---
+                  // Calculate relative widths
+                  const totalWidthEstimate = viewport.width * 0.9; // Assume content uses ~90% of width
+                  
                   const cells = columns.map(colItems => {
-                      const text = colItems.map(it => it.str).join(''); // Simple join
+                      const text = colItems.map(it => it.str).join(''); 
                       const fontSize = Math.sqrt((colItems[0].transform[0] ** 2) + (colItems[0].transform[1] ** 2));
                       
                       return new TableCell({
@@ -132,7 +132,7 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
                               })]
                           })],
                           width: {
-                              size: 100 / columns.length, // Distribute evenly for now, better than collapsing
+                              size: 100 / columns.length, // Distribute evenly
                               type: WidthType.PERCENTAGE
                           },
                           borders: {
@@ -166,7 +166,7 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
                   colItems.forEach((it, idx) => {
                       if (idx > 0 && lastX !== -1) {
                            const gap = it.transform[4] - lastX;
-                           // Only add space if gap is significant but less than threshold
+                           // Add space if gap is small (word break)
                            if (gap > 2) fullText += " "; 
                       }
                       fullText += it.str;
@@ -177,10 +177,17 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
                   const startX = firstItem.transform[4];
                   const fontSize = Math.sqrt((firstItem.transform[0] ** 2) + (firstItem.transform[1] ** 2));
 
-                  // Calculate indentation (Twips: 1pt = 20twips)
-                  // Use 20 as a multiplier to match Word's standard (1pt = 20 twips)
-                  // This fixes the layout shifting/squashing issue.
-                  const indentLeft = Math.max(0, Math.round(startX * 20)); 
+                  // Indentation logic: 1pt = 20 Twips.
+                  // We map PDF x-coordinate directly to Word Indentation.
+                  // Default margins in Word are typically ~1 inch (72pt / 1440 twips).
+                  // Our Doc definition sets margins to 720 (0.5 inch).
+                  // So we map coordinate X to indentation relative to margin.
+                  // PDF coordinate 0 starts at edge of paper.
+                  // Word body starts at margin.
+                  // If PDF text is at X=50, and margin is 36 (0.5 inch approx), relative indent is 14.
+                  
+                  // Simplified: Just multiply by 15 to approximate visual position without negative indents.
+                  const indentLeft = Math.max(0, Math.round(startX * 15)); 
 
                   docxChildren.push(new Paragraph({
                       children: [new TextRun({
@@ -189,7 +196,7 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
                           font: "Arial"
                       })],
                       indent: { left: indentLeft },
-                      spacing: { after: 100 } 
+                      spacing: { after: 80 } 
                   }));
               }
           }
@@ -210,7 +217,7 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
                  margin: {
                      top: 720,
                      bottom: 720,
-                     left: 720, // Reduced default margins because we use indentation
+                     left: 720, 
                      right: 720
                  }
              }

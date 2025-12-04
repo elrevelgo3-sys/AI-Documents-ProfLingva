@@ -113,7 +113,8 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
       if (context) {
         canvas.height = viewport.height;
         canvas.width = viewport.width;
-        await page.render({ canvasContext: context, viewport: viewport }).promise;
+        // Cast to any to avoid type mismatch in some pdfjs-dist versions
+        await page.render({ canvasContext: context, viewport: viewport } as any).promise;
         const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
         if (blob) pageBlobs.push(blob);
       }
