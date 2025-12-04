@@ -1,5 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist';
-import { Document, Packer, Paragraph, TextRun, AlignmentType, PageBreak, Footer, Header, Table, TableRow, TableCell, BorderStyle, WidthType } from 'docx';
+import { Document, Packer, Paragraph, TextRun, PageBreak, Footer, Header, Table, TableRow, TableCell, BorderStyle, WidthType } from 'docx';
 import saveAs from 'file-saver';
 
 // Ensure worker is set
@@ -44,7 +44,7 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
       // 1. Group items by Y coordinate (Lines)
       items.sort((a, b) => {
         const yDiff = b.transform[5] - a.transform[5]; // Sort Top to Bottom
-        if (Math.abs(yDiff) > 5) return yDiff; // Tolerance for "same line"
+        if (Math.abs(yDiff) > 4) return yDiff; // Stricter tolerance for "same line"
         return a.transform[4] - b.transform[4]; // Sort Left to Right
       });
 
@@ -56,11 +56,11 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
         if (!item.str.trim()) continue; // Skip empty whitespace items
 
         const y = item.transform[5];
-        if (currentLineY === -1 || Math.abs(currentLineY - y) < 5) {
+        if (currentLineY === -1 || Math.abs(currentLineY - y) < 4) {
           currentLineItems.push(item);
           currentLineY = y;
         } else {
-          // Sort items in the finished line by X coordinate to be sure
+          // Sort items in the finished line by X coordinate
           currentLineItems.sort((a,b) => a.transform[4] - b.transform[4]);
           lines.push({
             y: currentLineY,
@@ -86,10 +86,10 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
         if (line.y < footerThreshold) line.isFooter = true;
       });
 
-      // 3. Process Lines into Tables or Paragraphs
-      // The "Adaptive Grid" logic: If a line has large gaps, use an Invisible Table.
+      // 3. Process Lines into Tables or Paragraphs (Adaptive Grid)
       
-      const GAP_THRESHOLD = 25; // Points. If gap > 25pt, treat as separate column.
+      // Use a smaller gap threshold to detect columns better
+      const GAP_THRESHOLD = 18; 
 
       const processLinesToChildren = (targetLines: ProcessedLine[]) => {
           const docxChildren: any[] = [];
@@ -103,8 +103,9 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
                   const prev = line.items[i-1];
                   const curr = line.items[i];
                   
-                  // Estimate previous item end X (approximate width calculation if width is missing or weird)
-                  const prevEndX = prev.transform[4] + (prev.width || (prev.str.length * 4)); 
+                  // Use precise width if available, otherwise estimate
+                  const prevWidth = prev.width > 0 ? prev.width : (prev.str.length * 4.5);
+                  const prevEndX = prev.transform[4] + prevWidth; 
                   const currStartX = curr.transform[4];
                   const gap = currStartX - prevEndX;
 
@@ -119,16 +120,14 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
               if (columns.length > 1) {
                   // --- CASE A: Multi-column line (Use Invisible Table) ---
                   const cells = columns.map(colItems => {
-                      // Merge text in the column
-                      const text = colItems.map(it => it.str).join('');
-                      // Get font size from first item
+                      const text = colItems.map(it => it.str).join(''); // Simple join
                       const fontSize = Math.sqrt((colItems[0].transform[0] ** 2) + (colItems[0].transform[1] ** 2));
                       
                       return new TableCell({
                           children: [new Paragraph({
                               children: [new TextRun({
                                   text: text,
-                                  size: Math.round(fontSize * 2) || 20, // Half-points
+                                  size: Math.round(fontSize * 2) || 20,
                                   font: "Arial"
                               })]
                           })],
@@ -138,8 +137,6 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
                               left: { style: BorderStyle.NONE, size: 0 },
                               right: { style: BorderStyle.NONE, size: 0 },
                           },
-                          // We let Word auto-distribute width, or could calculate percentages based on X pos
-                          // For simplicity in this lightweight native converter, auto-width often works best for alignment
                       });
                   });
 
@@ -159,17 +156,17 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
               } else {
                   // --- CASE B: Single column line (Use Paragraph with Indent) ---
                   const colItems = columns[0];
-                  // Merge text carefully considering small spaces
                   let fullText = "";
                   let lastX = -1;
                   
                   colItems.forEach((it, idx) => {
                       if (idx > 0 && lastX !== -1) {
                            const gap = it.transform[4] - lastX;
-                           if (gap > 2) fullText += " "; // Add space if small gap
+                           // Only add space if gap is significant but less than threshold
+                           if (gap > 2) fullText += " "; 
                       }
                       fullText += it.str;
-                      lastX = it.transform[4] + (it.width || 0);
+                      lastX = it.transform[4] + (it.width || (it.str.length * 4.5));
                   });
 
                   const firstItem = colItems[0];
@@ -177,8 +174,8 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
                   const fontSize = Math.sqrt((firstItem.transform[0] ** 2) + (firstItem.transform[1] ** 2));
 
                   // Calculate indentation (Twips: 1pt = 20twips)
-                  // Subtracting a small margin to align with standard page margins
-                  const indentLeft = Math.max(0, Math.round(startX * 15)); 
+                  // Use 12 as a multiplier to match Word's visual scale better
+                  const indentLeft = Math.max(0, Math.round(startX * 12)); 
 
                   docxChildren.push(new Paragraph({
                       children: [new TextRun({
@@ -187,7 +184,7 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
                           font: "Arial"
                       })],
                       indent: { left: indentLeft },
-                      spacing: { after: 120 } // Slight spacing
+                      spacing: { after: 100 } 
                   }));
               }
           }
@@ -198,9 +195,7 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
       const headerParams = processLinesToChildren(lines.filter(l => l.isHeader));
       const footerParams = processLinesToChildren(lines.filter(l => l.isFooter));
 
-      // Add Page Break if not first page
       if (pageNum > 1) {
-         // Insert page break at the start of body
          bodyParams.unshift(new Paragraph({ children: [new PageBreak()] }));
       }
 
@@ -208,7 +203,7 @@ export const convertNativePdfToDocx = async (file: File, updateProgress?: (msg: 
         properties: {
              page: {
                  margin: {
-                     top: 720, // 0.5 inch
+                     top: 720,
                      bottom: 720,
                      left: 720,
                      right: 720

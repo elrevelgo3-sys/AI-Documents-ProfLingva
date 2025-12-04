@@ -22,15 +22,19 @@ export default async function handler(req, res) {
   }
 
   if (!apiKey) {
+    console.error("PROXY ERROR: GOOGLE_API_KEY is not set in environment variables.");
     return res.status(500).json({ 
-        error: 'Configuration Error: No API Key provided. Ensure GOOGLE_API_KEY is set in Vercel Environment Variables.' 
+        error: {
+            code: 500,
+            message: 'Server Configuration Error: GOOGLE_API_KEY is missing. Please add it to Vercel Environment Variables.',
+            status: 'INTERNAL_SERVER_ERROR'
+        }
     });
   }
 
   // 3. Construct Target URL
   // The SDK appends the path to the baseUrl.
   // We need to strip the '/api/proxy' prefix to get the real Google path.
-  // Example req.url: /api/proxy/v1beta/models/gemini-2.5-flash:generateContent?key=dummy
   
   let googlePath = req.url;
   
@@ -39,8 +43,10 @@ export default async function handler(req, res) {
       googlePath = googlePath.replace('/api/proxy', '');
   }
   
-  // Ensure we don't duplicate the key in the query params
   const targetBase = 'https://generativelanguage.googleapis.com';
+  // Ensure we don't duplicate slashes
+  if (!googlePath.startsWith('/')) googlePath = '/' + googlePath;
+
   const urlObj = new URL(targetBase + googlePath);
   
   // Override the key with the real server-side key
@@ -50,6 +56,7 @@ export default async function handler(req, res) {
 
   try {
     // 4. Forward the Request
+    // We strictly use the body from the request.
     const googleResponse = await fetch(targetUrl, {
       method: req.method,
       headers: {
@@ -57,20 +64,21 @@ export default async function handler(req, res) {
         // Forward client info if present
         'x-goog-api-client': req.headers['x-goog-api-client'] || 'genai-js/1.0',
       },
+      // Pass body directly if it exists
       body: req.method === 'POST' ? JSON.stringify(req.body) : undefined,
     });
 
     const data = await googleResponse.json();
 
     if (!googleResponse.ok) {
-        console.error('Google API Error via Proxy:', data);
+        console.error('Google API Error via Proxy:', JSON.stringify(data));
         return res.status(googleResponse.status).json(data);
     }
 
     res.status(200).json(data);
 
   } catch (error) {
-    console.error('Proxy Error:', error);
-    res.status(500).json({ error: error.message || 'Internal Proxy Error' });
+    console.error('Proxy Internal Error:', error);
+    res.status(500).json({ error: { message: error.message || 'Internal Proxy Error' } });
   }
 }

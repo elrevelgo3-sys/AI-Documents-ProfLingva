@@ -10,14 +10,15 @@ const getClient = () => {
       proxyUrl = localStorage.getItem('gemini_proxy_url');
   }
 
-  // 2. Auto-Detect Vercel Environment
-  // If we are running on Vercel and no manual proxy is set, force use of the local serverless proxy.
-  // This solves the issue of missing API keys on the client and CORS/Geo-blocking.
+  // 2. Auto-Detect / Default to Proxy in Production
   if (typeof window !== 'undefined' && !proxyUrl) {
-      if (window.location.hostname.includes('vercel.app')) {
-          // Use relative path which Vercel rewrites to /api/proxy
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      
+      // If we are NOT on localhost, assume we have the serverless backend available (Vercel)
+      // This forces the app to use the proxy in production, bypassing Google's geo-blocks.
+      if (!isLocalhost) {
           proxyUrl = '/api/proxy'; 
-          console.log("Auto-detected Vercel environment. Switching to Serverless Proxy.");
+          console.log("Production environment detected. Using Serverless Proxy.");
       }
   }
 
@@ -25,12 +26,11 @@ const getClient = () => {
   let apiKey = '';
   
   // Try to get key from build-time injection (vite.config.ts)
-  // Accessing process.env.API_KEY directly because we defined it in Vite config
   try {
       // @ts-ignore
       apiKey = process.env.API_KEY || '';
   } catch (e) {
-      // Ignore reference errors
+      // Ignore reference errors in browser
   }
 
   // If we are using the proxy, we don't need the real key on the client.
@@ -118,6 +118,7 @@ export const analyzeDocument = async (fileOrBlob: File | Blob): Promise<Structur
   const base64Data = await fileToGenerativePart(fileOrBlob);
   
   // Using gemini-2.5-flash as it is reliable for coordinates. 
+  // Can be upgraded to gemini-1.5-pro or gemini-3-pro-preview if higher reasoning is needed.
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: {
