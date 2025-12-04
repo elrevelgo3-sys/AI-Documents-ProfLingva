@@ -6,48 +6,50 @@ const getClient = () => {
   let proxyUrl: string | null = null;
   let apiKey = '';
 
-  // 1. Determine Proxy URL
   if (typeof window !== 'undefined') {
-      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      
-      if (!isLocalhost) {
-          // FORCE Proxy in Production (Vercel)
-          // This ensures the browser NEVER calls googleapis.com directly, bypassing regional blocks.
-          proxyUrl = '/api/proxy';
-          console.log("Production mode: Enforcing /api/proxy");
-      } else {
-          // In localhost, allow manual override for testing
-          proxyUrl = localStorage.getItem('gemini_proxy_url');
-      }
+    const isLocalhost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1';
+
+    if (!isLocalhost) {
+      proxyUrl = '/api/proxy'; // как у тебя сейчас
+      console.log('Production mode: Enforcing /api/proxy');
+    } else {
+      proxyUrl = localStorage.getItem('gemini_proxy_url');
+    }
   }
 
-  // 2. Resolve API Key
-  // If we use the proxy, we DO NOT need the real key on the client. 
-  // We send a dummy key to satisfy the SDK's client-side validation.
   if (proxyUrl) {
-      apiKey = 'dummy_key_for_proxy';
+    apiKey = 'dummy_key_for_proxy';
   } else {
-      // Fallback for localhost without proxy (requires VPN)
-      try {
-          // @ts-ignore
-          apiKey = process.env.API_KEY || '';
-      } catch (e) {}
+    try {
+      // @ts-ignore
+      apiKey = process.env.API_KEY || '';
+    } catch (e) {}
   }
 
   if (!apiKey) {
-      console.warn("CRITICAL: No API Key found and no Proxy configured.");
-      // We pass a placeholder to avoid immediate crash, but the call will fail if not intercepted.
-      apiKey = 'MISSING_KEY';
+    console.warn('CRITICAL: No API Key found and no Proxy configured.');
+    apiKey = 'MISSING_KEY';
   }
 
-  const config: any = { apiKey: apiKey };
-  
+  const config: any = { apiKey };
+
   if (proxyUrl) {
-      config.baseUrl = proxyUrl;
+    const baseUrl = proxyUrl.startsWith('http')
+      ? proxyUrl
+      : (typeof window !== 'undefined'
+          ? window.location.origin + proxyUrl
+          : proxyUrl);
+
+    config.httpOptions = {
+      baseUrl,            // ВАЖНО: именно тут
+    };
   }
 
   return new GoogleGenAI(config);
 };
+
 
 // --- Document Analysis (Upgraded to Gemini 3 Pro for better structure) ---
 
