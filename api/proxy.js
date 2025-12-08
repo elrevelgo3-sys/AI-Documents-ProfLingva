@@ -1,101 +1,66 @@
-// This file handles requests forwarded from the Vercel rewrite.
-// It proxies everything to Google's Generative Language API.
+// Vercel Serverless Function (Node.js Runtime)
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb', // Increased to 10mb to handle high-res page images
+    },
+    externalResolver: true,
+  },
+};
 
 export default async function handler(req, res) {
-  // 1. CORS Headers
+  // CORS Headers
+  res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-goog-api-client, x-goog-api-key');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
 
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
   }
 
-  // 2. Resolve Google API Key
-  const apiKey = process.env.GOOGLE_API_KEY;
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
 
   if (!apiKey) {
-    console.error("PROXY ERROR: GOOGLE_API_KEY is not set in environment variables.");
-    return res.status(500).json({ 
-        error: {
-            code: 500,
-            message: 'Server Configuration Error: GOOGLE_API_KEY is missing on Vercel.',
-            status: 'INTERNAL_SERVER_ERROR'
-        }
-    });
+    console.error("Missing OPENROUTER_API_KEY on server");
+    return res.status(500).json({ error: 'Server configuration error: Missing API Key.' });
   }
 
   try {
-    // 3. Construct Target URL
-    const targetBase = 'https://generativelanguage.googleapis.com';
-    
-    // Determine the path. 
-    // Vercel rewrites map /api/proxy/:path* -> /api/proxy?path=:path*
-    let googlePath = '';
+    const body = req.body;
 
-    if (req.query && req.query.path) {
-        // If Vercel put the path in the query params
-        const p = Array.isArray(req.query.path) ? req.query.path.join('/') : req.query.path;
-        googlePath = '/' + p.replace(/^\/+/, ''); // Ensure single leading slash
-    } else {
-        // Fallback: extract from req.url if no query param (e.g. local dev)
-        googlePath = req.url.replace('/api/proxy', '');
-        // Remove query params from the path string itself if they exist, 
-        // as we will reconstruct them
-        const qIndex = googlePath.indexOf('?');
-        if (qIndex !== -1) {
-            googlePath = googlePath.substring(0, qIndex);
-        }
-    }
+    // console.log(`Proxying to OpenRouter: ${body.model}`);
 
-    // Ensure path starts with /
-    if (!googlePath.startsWith('/')) googlePath = '/' + googlePath;
-
-    const urlObj = new URL(targetBase + googlePath);
-    
-    // Copy original query params (except 'path')
-    const incomingUrlObj = new URL('http://localhost' + req.url);
-    incomingUrlObj.searchParams.forEach((value, key) => {
-        if (key !== 'path') {
-            urlObj.searchParams.append(key, value);
-        }
-    });
-
-    // CRITICAL: Force the API key
-    urlObj.searchParams.set('key', apiKey);
-    
-    // CRITICAL: Ensure 'path' param is gone (Google API rejects it)
-    urlObj.searchParams.delete('path');
-
-    const targetUrl = urlObj.toString();
-    // console.log(`Proxying to: ${targetUrl.replace(apiKey, 'HIDDEN_KEY')}`);
-
-    // 4. Forward the Request
-    const headers = {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://proflingva.com',
+        'X-Title': 'Prof Lingva Enterprise',
         'Content-Type': 'application/json',
-        // Pass the client version header if present
-        ...(req.headers['x-goog-api-client'] && { 'x-goog-api-client': req.headers['x-goog-api-client'] }),
-    };
-
-    const googleResponse = await fetch(targetUrl, {
-      method: req.method,
-      headers: headers,
-      // Pass body directly
-      body: req.method === 'POST' ? JSON.stringify(req.body) : undefined,
+      },
+      body: JSON.stringify(body),
     });
 
-    const data = await googleResponse.json();
-
-    if (!googleResponse.ok) {
-        console.error('Google API Error via Proxy:', JSON.stringify(data));
-        return res.status(googleResponse.status).json(data);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('OpenRouter Upstream Error:', response.status, errorText);
+      return res.status(response.status).json({ error: `Provider Error: ${errorText}` });
     }
 
-    res.status(200).json(data);
+    const data = await response.json();
+    return res.status(200).json(data);
 
   } catch (error) {
-    console.error('Proxy Internal Error:', error);
-    res.status(500).json({ error: { message: error.message || 'Internal Proxy Error' } });
+    console.error('Proxy internal error:', error);
+    return res.status(500).json({ error: 'Internal Proxy Error', details: error.message });
   }
 }
