@@ -68,7 +68,7 @@ export const analyzeDocument = async (fileOrBlob: File | Blob): Promise<Structur
   `;
 
   const payload = {
-    model: "google/gemini-2.0-flash-001", // Using Gemini 2.0 Flash via OpenRouter for best speed/accuracy balance
+    model: "google/gemini-2.5-flash", // Using Gemini 2.0 Flash via OpenRouter for best speed/accuracy balance
     messages: [
       { role: "system", content: systemPrompt },
       { 
