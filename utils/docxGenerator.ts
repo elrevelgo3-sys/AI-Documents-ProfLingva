@@ -103,9 +103,20 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
       };
       
       const align = alignmentMap[element.style?.alignment] || AlignmentType.LEFT;
-      // Safe color access
-      const colorRaw = element.style?.color || '000000';
-      const color = colorRaw.replace('#', '');
+      
+      // Strict Color Validation for docx library
+      const colorRaw = (element.style?.color || '000000').toLowerCase().trim();
+      let color = '000000';
+      const cleanHex = colorRaw.replace(/#/g, '');
+
+      // Check for valid hex formats
+      if (/^[0-9a-f]{6}$/.test(cleanHex)) {
+         color = cleanHex;
+      } else if (/^[0-9a-f]{3}$/.test(cleanHex)) {
+         // Expand 3-digit hex (e.g. f00 -> ff0000)
+         color = cleanHex.split('').map(c => c + c).join('');
+      }
+      // If color is invalid (e.g. 'black', 'rgb(...)'), it stays '000000'
       
       const size = (element.style?.font_size || 11) * 2; // DOCX uses half-points. Default to 11pt if missing.
 
@@ -114,7 +125,7 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
         text: element.content || '',
         bold: element.style?.bold || false,
         italics: element.style?.italic || false,
-        color: color !== '000000' ? color : undefined, // Only apply color if not black to save file size/complexity
+        color: color !== '000000' ? color : undefined, // Only apply color if valid non-black hex
         size: size,
         font: element.style?.font_name || 'Arial', // Fallback to Arial which is standard
       });
