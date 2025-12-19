@@ -82,13 +82,19 @@ export const convertPdfToDocx = async (file: File, options: ConvertOptions): Pro
         // The response is the binary file blob because we used `download=attachment`
         const blob = xhr.response;
         
-        // Extract filename from content-disposition if possible, else derive from source
-        const contentDisposition = xhr.getResponseHeader('Content-Disposition');
+        // Default filename derived from input
         let fileName = file.name.replace(/\.pdf$/i, '') + '.docx';
-        
-        if (contentDisposition) {
-          const match = contentDisposition.match(/filename="?([^"]+)"?/);
-          if (match && match[1]) fileName = match[1];
+
+        // Safe header access: Browsers may block 'Content-Disposition' if not exposed by CORS.
+        // We use try/catch or simple check to avoid errors halting execution.
+        try {
+            const contentDisposition = xhr.getResponseHeader('Content-Disposition');
+            if (contentDisposition) {
+                const match = contentDisposition.match(/filename="?([^"]+)"?/);
+                if (match && match[1]) fileName = match[1];
+            }
+        } catch (e) {
+            console.warn("Could not read Content-Disposition header due to CORS restrictions. Using default filename.");
         }
 
         saveAs(blob, fileName);

@@ -7,9 +7,6 @@ import { downloadDocx, PageResult } from '../utils/docxGenerator';
 import ComparisonPreview from './ComparisonPreview';
 import { useLanguage } from '../contexts/LanguageContext';
 
-// Set worker source to match package.json version 5.4.449
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/build/pdf.worker.min.mjs';
-
 interface ProcessJob {
   id: string;
   file: File;
@@ -31,6 +28,37 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
   const [previewJob, setPreviewJob] = useState<ProcessJob | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { t } = useLanguage();
+
+  // CRITICAL FIX: Load PDF Worker via Blob to bypass CORS
+  // Browser security blocks Workers loaded from cross-origin URLs (CDNs).
+  // We fetch the script content first, then create a local Blob URL.
+  useEffect(() => {
+    const setupWorker = async () => {
+      // Use the specific version matched in package.json
+      const WORKER_CDN_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/build/pdf.worker.min.mjs';
+
+      try {
+        // Check if already set to avoid re-fetching
+        if (pdfjsLib.GlobalWorkerOptions.workerSrc && pdfjsLib.GlobalWorkerOptions.workerSrc.startsWith('blob:')) {
+            return;
+        }
+
+        const response = await fetch(WORKER_CDN_URL);
+        if (!response.ok) throw new Error("Failed to download worker script");
+        
+        const workerScript = await response.text();
+        const blob = new Blob([workerScript], { type: 'text/javascript' });
+        const blobUrl = URL.createObjectURL(blob);
+        
+        pdfjsLib.GlobalWorkerOptions.workerSrc = blobUrl;
+      } catch (error) {
+        console.warn("Failed to load PDF worker via Blob, falling back to CDN (may fail due to CORS)", error);
+        pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_CDN_URL;
+      }
+    };
+
+    setupWorker();
+  }, []);
 
   useEffect(() => {
     if (!globalProcessing) return;
@@ -98,10 +126,16 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
 
   const convertPdfToImages = async (pdfFile: File, updateProgress: (msg: string) => void): Promise<Blob[]> => {
     const arrayBuffer = await pdfFile.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    // Using standard font loading to prevent some rendering issues
+    const loadingTask = pdfjsLib.getDocument({
+        data: arrayBuffer,
+        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/cmaps/',
+        cMapPacked: true,
+    });
+    
+    const pdf = await loadingTask.promise;
     const pageBlobs: Blob[] = [];
     const totalPages = pdf.numPages;
-    // UPDATED: Increased limit to 100 pages per document as requested
     const MAX_PAGES = 100; 
 
     for (let i = 1; i <= Math.min(totalPages, MAX_PAGES); i++) {
@@ -149,14 +183,13 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
       setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: 'analyzing', pagesBlob: pages } : j));
 
       // BATCH CONFIGURATION
-      const BATCH_SIZE = 3; // Processing 3 pages per request to save system prompts while avoiding output token limits
-      const CONCURRENCY_LIMIT = 2; // Run 2 batches in parallel
+      const BATCH_SIZE = 3; 
+      const CONCURRENCY_LIMIT = 2; 
       
       const totalPages = pages.length;
       let processedCount = 0;
       const finalResults: PageResult[] = [];
 
-      // Create chunks
       const chunks: { blobs: Blob[], startIndex: number }[] = [];
       for (let i = 0; i < pages.length; i += BATCH_SIZE) {
           chunks.push({
@@ -167,10 +200,8 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
 
       const processBatchChunk = async (chunk: { blobs: Blob[], startIndex: number }): Promise<void> => {
          try {
-            // Send batch to AI
             const documents = await analyzeBatch(chunk.blobs);
             
-            // Map results back to PageResult objects
             documents.forEach((doc, idx) => {
                 finalResults.push({
                     data: doc,
@@ -187,12 +218,9 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
 
          } catch (e) {
             console.error(`Batch starting at ${chunk.startIndex} failed`, e);
-            // On failure, we try to allow partial success or just log it. 
-            // In a pro app, we might retry individual pages here.
          }
       };
 
-      // Execute batches with concurrency limit
       const active = new Set<Promise<void>>();
       for (const chunk of chunks) {
           const promise = processBatchChunk(chunk);
@@ -227,7 +255,6 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
   const handleProcessAll = async () => {
     setGlobalProcessing(true);
     const idleJobs = jobs.filter(j => j.status === 'idle' || j.status === 'error');
-    // PARALLEL EXECUTION: Run all jobs simultaneously
     await Promise.all(idleJobs.map(job => processJob(job.id)));
   };
 
