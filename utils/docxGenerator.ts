@@ -1,5 +1,5 @@
 
-import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel, AlignmentType, ImageRun, WidthType, BorderStyle, PageBreak, Footer, Header, PageNumber, TableLayoutType, FrameAnchorType, HorizontalPositionAlign, VerticalPositionAlign, HeightRule } from 'docx';
+import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, AlignmentType, ImageRun, WidthType, BorderStyle, PageBreak, FrameAnchorType } from 'docx';
 import saveAs from 'file-saver';
 import { StructuredDocument, ElementType } from '../types';
 
@@ -83,15 +83,12 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
       
       // Calculate Width/Height in Twips
       const widthPercent = Math.abs(xmax - xmin) / 1000;
-      // const heightPercent = Math.abs(ymax - ymin) / 1000;
       
       const widthTwips = Math.floor(widthPercent * PAGE_WIDTH_TWIPS);
-      // const heightTwips = Math.floor(heightPercent * PAGE_HEIGHT_TWIPS);
-      
       const xTwips = Math.floor((xmin / 1000) * PAGE_WIDTH_TWIPS);
       const yTwips = Math.floor((ymin / 1000) * PAGE_HEIGHT_TWIPS);
 
-      // Fix TS7053: Explicitly type the map
+      // Fix TS7053: Explicitly type the map so string index access is valid
       const alignmentMap: Record<string, (typeof AlignmentType)[keyof typeof AlignmentType]> = {
         'l': AlignmentType.LEFT,
         'c': AlignmentType.CENTER,
@@ -114,7 +111,7 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
 
       const fontSize = (element.style?.font_size || 10) * 2; // Half-points
 
-      // 1. Handle Tables (Tables are hard to absolute position perfectly, usually flow is better, but we can indent)
+      // 1. Handle Tables
       if (element.type === ElementType.TABLE && element.data?.rows) {
          // Create table
          const rows = element.data.rows.map(r => new TableRow({
@@ -145,7 +142,8 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
           try {
               const b64 = await cropImage(source, element.bbox);
               if (b64) {
-                  // Fix for TS error: convert base64 to Uint8Array and add 'type'
+                  // Fix for TS2353: 'type' property is NOT allowed in ImageRun options in this version of docx.
+                  // The library detects type from the byte signature.
                   const imageBytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
                   
                   children.push(new Paragraph({
@@ -162,7 +160,10 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
                       children: [
                           new ImageRun({
                               data: imageBytes,
-                              transformation: { width: widthTwips / 20, height: (widthTwips / 20) * 0.75 }, 
+                              transformation: { 
+                                  width: widthTwips / 15, // Approximate conversion to pixels (15 twips ~= 1 px)
+                                  height: (widthTwips / 15) * 0.75 
+                              },
                               type: "png"
                           })
                       ]

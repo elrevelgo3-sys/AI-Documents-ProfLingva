@@ -1,6 +1,6 @@
-import { StructuredDocument, DocElement, ElementType } from '../types';
 
-const PROXY_URL = '/api/proxy';
+import { GoogleGenAI } from "@google/genai";
+import { StructuredDocument, DocElement, ElementType } from '../types';
 
 /**
  * Tries to repair a truncated JSON string by closing open brackets/braces.
@@ -41,6 +41,8 @@ function repairJson(jsonStr: string): string {
 export const analyzeBatch = async (images: Blob[]): Promise<StructuredDocument[]> => {
   // 1. Optimize images
   const base64Images = await Promise.all(images.map(img => optimizeImageForAI(img)));
+  
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   // MINIFIED PROTOCOL:
   // Instead of verbose objects, we ask for Arrays:
@@ -73,32 +75,29 @@ export const analyzeBatch = async (images: Blob[]): Promise<StructuredDocument[]
   Example Element: ["p", "Hello world", [10, 50, 20, 200], {"b":1}]`;
 
   // We process 1 page at a time usually, but this supports batch logic
-  const userContent: any[] = [
-    { type: "text", text: `Digitize these ${images.length} pages. Use the Minified Array format.` }
+  const parts: any[] = [
+    { text: `Digitize these ${images.length} pages. Use the Minified Array format.` }
   ];
 
   base64Images.forEach(b64 => {
-    userContent.push({
-        type: "image_url",
-        image_url: { url: `data:image/jpeg;base64,${b64}` }
+    parts.push({
+        inlineData: {
+            mimeType: 'image/jpeg',
+            data: b64
+        }
     });
   });
 
-  const payload = {
-    model: "google/gemini-2.0-flash-001", 
-    messages: [
-      { role: "system", content: systemPrompt },
-      { 
-        role: "user", 
-        content: userContent
-      }
-    ],
-    response_format: { type: "json_object" }
-  };
-
-  const data = await callOpenRouter(payload);
+  const response = await ai.models.generateContent({
+    model: "gemini-2.0-flash-001",
+    contents: { parts },
+    config: {
+        systemInstruction: systemPrompt,
+        responseMimeType: "application/json"
+    }
+  });
   
-  let content = data.choices?.[0]?.message?.content;
+  let content = response.text;
   if (!content) throw new Error("AI returned empty content");
   
   content = content.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -190,36 +189,17 @@ export const translateText = async (text: string, options: TranslationOptions): 
 
   const systemPrompt = `Translate from ${sourceLang} to ${targetLang}. Domain: ${domain}. Tone: ${tone}. ${glossaryInstruction}. Return only translation.`;
 
-  const payload = {
-    model: "google/gemini-2.0-flash-001",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: text }
-    ]
-  };
-
-  const data = await callOpenRouter(payload);
-  return data.choices?.[0]?.message?.content || "";
-};
-
-async function callOpenRouter(body: any) {
-  const response = await fetch(PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: { parts: [{ text: text }] },
+      config: {
+          systemInstruction: systemPrompt
+      }
   });
 
-  if (response.status === 404) {
-    throw new Error("Proxy Endpoint Not Found.");
-  }
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`API Error ${response.status}: ${errorText.substring(0, 100)}...`);
-  }
-  
-  return response.json();
-}
+  return response.text || "";
+};
 
 async function optimizeImageForAI(file: File | Blob): Promise<string> {
   return new Promise((resolve, reject) => {
