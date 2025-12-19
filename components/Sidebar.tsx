@@ -1,7 +1,8 @@
 
 import React from 'react';
 import { AppMode } from '../types';
-import { FileText, Languages, Coffee, CheckCircle, ShieldCheck, Zap } from 'lucide-react';
+import { FileText, Languages, Coffee, Zap, ShieldCheck } from 'lucide-react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface SidebarProps {
   currentMode: AppMode;
@@ -9,30 +10,32 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ currentMode, setMode }) => {
+  const { t } = useLanguage();
+
   const navItems = [
     { 
       mode: AppMode.DOCUMENT, 
-      label: 'Smart Digitization', 
+      label: t('smartDigitization'), 
       icon: FileText, 
-      desc: 'OCR & Structure Recovery' 
+      desc: t('smartDigitizationDesc') 
     },
     { 
       mode: AppMode.NATIVE, 
-      label: 'Instant Native PDF', 
+      label: t('instantNativePdf'), 
       icon: Zap, 
-      desc: 'High-Speed Extraction' 
+      desc: t('instantNativePdfDesc') 
     },
     { 
       mode: AppMode.TRANSLATE, 
-      label: 'Neural Translation', 
+      label: t('neuralTranslation'), 
       icon: Languages, 
-      desc: 'Enterprise Linguistic Core' 
+      desc: t('neuralTranslationDesc') 
     },
     { 
       mode: AppMode.GAME, 
-      label: 'Executive Lounge', 
+      label: t('executiveLounge'), 
       icon: Coffee, 
-      desc: 'Cognitive Reset Zone' 
+      desc: t('executiveLoungeDesc') 
     },
   ];
 
@@ -52,8 +55,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentMode, setMode }) => {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-6 space-y-3">
-        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 px-2">Module Selection</div>
+      <nav className="flex-1 p-6 space-y-3 overflow-y-auto">
+        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 px-2">{t('moduleSelection')}</div>
         {navItems.map((item) => {
           const isActive = currentMode === item.mode;
           return (
@@ -94,7 +97,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentMode, setMode }) => {
            </div>
            
            <div className="relative z-10">
-             <p className="text-xs font-bold text-slate-200 mb-0.5">IT Resident</p>
+             <p className="text-xs font-bold text-slate-200 mb-0.5">{t('itResident')}</p>
              <p className="text-lg font-display font-bold tracking-wide text-white">Skolkovo</p>
            </div>
         </div>
@@ -102,9 +105,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentMode, setMode }) => {
         <div className="mt-6 flex items-center justify-between text-[10px] text-slate-400 font-medium border-t border-slate-100 pt-4">
           <div className="flex items-center gap-1.5">
             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-            System Operational
+            {t('systemOperational')}
           </div>
-          <span>v2.5.0 Enterprise</span>
+          <span>v2.7.0 Enterprise</span>
         </div>
       </div>
     </div>

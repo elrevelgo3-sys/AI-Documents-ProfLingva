@@ -1,14 +1,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, FileDown, Loader2, FileType, CheckCircle2, Play, Trash2, ScanLine, Settings, Eye, X } from 'lucide-react';
+import { Upload, FileDown, Loader2, FileType, CheckCircle2, Play, Trash2, ScanLine, Eye, X } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
-import { analyzeDocument } from '../services/geminiService';
+import { analyzeBatch } from '../services/geminiService';
 import { downloadDocx, PageResult } from '../utils/docxGenerator';
-import SettingsModal from './SettingsModal';
 import ComparisonPreview from './ComparisonPreview';
+import { useLanguage } from '../contexts/LanguageContext';
 
-// Set worker source
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
+// Set worker source to match package.json version 5.4.449
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/build/pdf.worker.min.mjs';
 
 interface ProcessJob {
   id: string;
@@ -28,9 +28,9 @@ interface DocAnalyzerProps {
 const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
   const [jobs, setJobs] = useState<ProcessJob[]>([]);
   const [globalProcessing, setGlobalProcessing] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [previewJob, setPreviewJob] = useState<ProcessJob | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (!globalProcessing) return;
@@ -77,7 +77,7 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
         file,
         previewUrl: preview,
         status: 'idle',
-        progress: 'Awaiting Authorization',
+        progress: t('statusIdle'),
         results: [],
         pagesBlob: []
       });
@@ -101,7 +101,8 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const pageBlobs: Blob[] = [];
     const totalPages = pdf.numPages;
-    const MAX_PAGES = 50; 
+    // UPDATED: Increased limit to 100 pages per document as requested
+    const MAX_PAGES = 100; 
 
     for (let i = 1; i <= Math.min(totalPages, MAX_PAGES); i++) {
       updateProgress(`Rasterizing vector page ${i} / ${Math.min(totalPages, MAX_PAGES)}...`);
@@ -125,7 +126,7 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
   };
 
   const processJob = async (jobId: string) => {
-    setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: 'loading_pdf', progress: 'Initializing Core...' } : j));
+    setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: 'loading_pdf', progress: t('statusInitializing') } : j));
     
     const getJob = () => jobs.find(j => j.id === jobId);
     let currentJob = jobs.find(j => j.id === jobId);
@@ -147,47 +148,69 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
 
       setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: 'analyzing', pagesBlob: pages } : j));
 
-      const CONCURRENCY_LIMIT = 5; 
+      // BATCH CONFIGURATION
+      const BATCH_SIZE = 3; // Processing 3 pages per request to save system prompts while avoiding output token limits
+      const CONCURRENCY_LIMIT = 2; // Run 2 batches in parallel
+      
       const totalPages = pages.length;
-      let completedCount = 0;
-      const tempResults: PageResult[] = [];
+      let processedCount = 0;
+      const finalResults: PageResult[] = [];
 
-      const processPage = async (page: Blob, index: number): Promise<PageResult | null> => {
+      // Create chunks
+      const chunks: { blobs: Blob[], startIndex: number }[] = [];
+      for (let i = 0; i < pages.length; i += BATCH_SIZE) {
+          chunks.push({
+              blobs: pages.slice(i, i + BATCH_SIZE),
+              startIndex: i
+          });
+      }
+
+      const processBatchChunk = async (chunk: { blobs: Blob[], startIndex: number }): Promise<void> => {
          try {
-            const data = await analyzeDocument(page);
-            completedCount++;
+            // Send batch to AI
+            const documents = await analyzeBatch(chunk.blobs);
+            
+            // Map results back to PageResult objects
+            documents.forEach((doc, idx) => {
+                finalResults.push({
+                    data: doc,
+                    source: chunk.blobs[idx],
+                    pageNumber: chunk.startIndex + idx + 1
+                });
+            });
+
+            processedCount += chunk.blobs.length;
             setJobs(prev => prev.map(j => j.id === jobId ? { 
                 ...j, 
-                progress: `Neural Processing... ${Math.round((completedCount / totalPages) * 100)}%` 
+                progress: `${t('statusAnalyzing')} ${Math.min(100, Math.round((processedCount / totalPages) * 100))}%` 
             } : j));
-            return { data, source: page, pageNumber: index + 1 };
+
          } catch (e) {
-            console.error(`Page ${index + 1} failed`, e);
-            return null;
+            console.error(`Batch starting at ${chunk.startIndex} failed`, e);
+            // On failure, we try to allow partial success or just log it. 
+            // In a pro app, we might retry individual pages here.
          }
       };
 
-      const queue = pages.map((p, i) => () => processPage(p, i));
+      // Execute batches with concurrency limit
       const active = new Set<Promise<void>>();
-      
-      for (const task of queue) {
-        const promise = task().then((res) => {
-            if (res) tempResults.push(res);
-        });
-        active.add(promise);
-        promise.then(() => active.delete(promise));
-        if (active.size >= CONCURRENCY_LIMIT) {
-            await Promise.race(active);
-        }
+      for (const chunk of chunks) {
+          const promise = processBatchChunk(chunk);
+          active.add(promise);
+          promise.then(() => active.delete(promise));
+          
+          if (active.size >= CONCURRENCY_LIMIT) {
+              await Promise.race(active);
+          }
       }
       await Promise.all(active);
       
-      const sortedResults = tempResults.sort((a,b) => a.pageNumber - b.pageNumber);
+      const sortedResults = finalResults.sort((a,b) => a.pageNumber - b.pageNumber);
       
       setJobs(prev => prev.map(j => j.id === jobId ? { 
           ...j, 
           status: 'completed', 
-          progress: 'Ready for Export', 
+          progress: t('statusReady'), 
           results: sortedResults 
       } : j));
 
@@ -195,7 +218,7 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
       setJobs(prev => prev.map(j => j.id === jobId ? { 
           ...j, 
           status: 'error', 
-          progress: 'Processing Failed', 
+          progress: t('statusFailed'), 
           error: err instanceof Error ? err.message : "Unknown error" 
       } : j));
     }
@@ -222,26 +245,15 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
               <ScanLine size={28} strokeWidth={2} />
            </div>
            <div>
-             <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Smart Digitization Core</h2>
+             <h2 className="text-3xl font-bold text-slate-900 tracking-tight">{t('smartCoreTitle')}</h2>
              <div className="flex items-center gap-2 mt-1">
-                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider rounded">Enterprise Edition</span>
+                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider rounded">{t('enterpriseEdition')}</span>
                 <span className="text-slate-400 text-sm">|</span>
-                <p className="text-sm text-slate-500 font-medium">Automated OCR & Structural Recovery</p>
+                <p className="text-sm text-slate-500 font-medium">{t('autoOcr')}</p>
              </div>
            </div>
         </div>
-        
-        <button 
-          onClick={() => setShowSettings(true)}
-          className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition mb-1"
-          title="Branding Settings"
-        >
-          <Settings size={20} />
-        </button>
       </header>
-
-      {/* Settings Modal */}
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
 
       {/* Preview Modal */}
       {previewJob && previewJob.previewUrl && previewJob.results.length > 0 && (
@@ -263,10 +275,10 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
           <div className="p-5 bg-slate-50 rounded-full mb-4 group-hover:scale-110 group-hover:bg-white group-hover:shadow-xl group-hover:shadow-brand-500/10 transition-all duration-300 z-10">
             <Upload className="w-8 h-8 text-slate-400 group-hover:text-brand-600" strokeWidth={2} />
           </div>
-          <h3 className="text-lg font-bold text-slate-900 z-10">Secure Document Upload</h3>
+          <h3 className="text-lg font-bold text-slate-900 z-10">{t('secureUpload')}</h3>
           <p className="text-slate-500 text-sm mt-1 max-w-sm mx-auto z-10">
-            Drag & drop PDF, PNG, or JPG files.
-            <span className="block text-xs text-slate-400 mt-2">Max batch size: 5 documents</span>
+            {t('dragDrop')}
+            <span className="block text-xs text-slate-400 mt-2">{t('maxBatch')}</span>
           </p>
         </div>
       )}
@@ -292,7 +304,7 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
                     removeJob(job.id);
                   }}
                   className="absolute top-2 right-2 p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all z-10"
-                  title="Dismiss Completed File"
+                  title={t('dismiss')}
                >
                   <X size={18} />
                </button>
@@ -351,20 +363,20 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
                        onClick={() => setPreviewJob(job)}
                        className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 flex items-center gap-2 transition"
                     >
-                       <Eye size={16} /> Preview
+                       <Eye size={16} /> {t('preview')}
                     </button>
                     <button 
                        onClick={() => handleDownload(job)}
                        className="px-5 py-2.5 bg-brand-900 text-white rounded-lg text-sm font-bold hover:bg-black shadow-lg shadow-slate-900/20 flex items-center gap-2 transition-all hover:-translate-y-0.5"
                     >
-                       <FileDown size={16} /> Export
+                       <FileDown size={16} /> {t('export')}
                     </button>
                  </>
               ) : (job.status === 'idle' || job.status === 'error') ? (
                  <button 
                    onClick={() => removeJob(job.id)}
                    className="p-2.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition"
-                   title="Remove from Queue"
+                   title={t('dismiss')}
                  >
                    <Trash2 size={18} />
                  </button>
@@ -375,7 +387,7 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
 
         {jobs.length === 0 && (
           <div className="text-center py-16">
-             <p className="text-sm text-slate-400 font-medium">System Idle. Waiting for input stream.</p>
+             <p className="text-sm text-slate-400 font-medium">{t('systemIdle')}</p>
           </div>
         )}
       </div>
@@ -388,7 +400,7 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
             className="px-8 py-4 bg-brand-600 text-white rounded-full font-bold shadow-[0_8px_30px_rgb(227,30,36,0.4)] hover:bg-brand-500 hover:scale-105 transition-all duration-300 flex items-center gap-3 disabled:opacity-70 disabled:scale-100 border-4 border-white/20 backdrop-blur-sm"
           >
             {globalProcessing ? <Loader2 className="animate-spin" /> : <Play fill="currentColor" />}
-            {globalProcessing ? 'PROCESSING QUEUE...' : 'INITIATE BATCH PROCESS'}
+            {globalProcessing ? t('processingQueue') : t('initiateBatch')}
           </button>
         </div>
       )}

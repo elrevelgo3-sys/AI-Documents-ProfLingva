@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Coffee, Trophy, RefreshCw, BrainCircuit } from 'lucide-react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface Card {
   id: number;
@@ -17,6 +18,7 @@ const MiniGame: React.FC = () => {
   const [moves, setMoves] = useState(0);
   const [matches, setMatches] = useState(0);
   const [won, setWon] = useState(false);
+  const { t } = useLanguage();
 
   const initializeGame = () => {
     const shuffled = [...EMOJIS, ...EMOJIS]
@@ -95,12 +97,12 @@ const MiniGame: React.FC = () => {
         <div className="inline-flex items-center justify-center p-4 bg-slate-900 rounded-full text-white mb-4 shadow-xl shadow-slate-900/20">
           <Coffee size={32} strokeWidth={1.5} />
         </div>
-        <h2 className="text-4xl font-bold text-slate-900 tracking-tight">Executive Lounge</h2>
-        <p className="text-slate-500 mt-2 font-medium">Cognitive reset zone. Engage neural plasticity while data processes.</p>
+        <h2 className="text-4xl font-bold text-slate-900 tracking-tight">{t('loungeTitle')}</h2>
+        <p className="text-slate-500 mt-2 font-medium">{t('loungeDesc')}</p>
       </header>
 
       <div className="flex justify-between items-center max-w-md mx-auto mb-8 bg-white px-6 py-4 rounded-2xl shadow-sm border border-slate-200">
-        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Moves: <span className="text-slate-900 text-base ml-1">{moves}</span></div>
+        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('moves')} <span className="text-slate-900 text-base ml-1">{moves}</span></div>
         <button 
           onClick={initializeGame}
           className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-brand-600 transition"
@@ -108,7 +110,7 @@ const MiniGame: React.FC = () => {
         >
           <RefreshCw size={20} />
         </button>
-        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Matches: <span className="text-brand-600 text-base ml-1">{matches}/{EMOJIS.length}</span></div>
+        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('matches')} <span className="text-brand-600 text-base ml-1">{matches}/{EMOJIS.length}</span></div>
       </div>
 
       <div className="grid grid-cols-4 gap-4 max-w-md mx-auto [perspective:1000px]">
@@ -142,7 +144,7 @@ const MiniGame: React.FC = () => {
         <div className="mt-10 animate-bounce">
           <div className="inline-flex items-center gap-3 bg-slate-900 text-white px-8 py-4 rounded-full font-bold shadow-2xl shadow-slate-900/30 border border-slate-800">
             <Trophy size={20} className="text-yellow-400" />
-            <span>Cognitive Calibration Complete</span>
+            <span>{t('complete')}</span>
           </div>
         </div>
       )}

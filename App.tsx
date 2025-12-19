@@ -7,6 +7,7 @@ import MiniGame from './components/MiniGame';
 import NativePdfConverter from './components/NativePdfConverter';
 import { AppMode } from './types';
 import { CheckCircle2, X } from 'lucide-react';
+import { useLanguage } from './contexts/LanguageContext';
 
 // Simple gentle notification sound
 const playGentleNotification = () => {
@@ -35,10 +36,11 @@ const playGentleNotification = () => {
 const App: React.FC = () => {
   const [mode, setMode] = useState<AppMode>(AppMode.DOCUMENT);
   const [notification, setNotification] = useState<{show: boolean, message: string}>({ show: false, message: '' });
+  const { language, setLanguage, t } = useLanguage();
 
   const handleProcessingComplete = () => {
     playGentleNotification();
-    setNotification({ show: true, message: "Batch processing successfully completed." });
+    setNotification({ show: true, message: t('batchComplete') });
     // Auto hide after 5 seconds
     setTimeout(() => {
       setNotification(prev => ({ ...prev, show: false }));
@@ -49,7 +51,24 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-gray-50 flex font-sans">
       <Sidebar currentMode={mode} setMode={setMode} />
       <div className="flex-1 ml-72 relative">
-        <div className="p-10 max-w-[1600px] mx-auto">
+        
+        {/* Language Switcher - Top Right */}
+        <div className="absolute top-6 right-10 z-40 flex bg-white rounded-full p-1 shadow-sm border border-slate-200">
+           <button 
+             onClick={() => setLanguage('en')}
+             className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${language === 'en' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}
+           >
+             ENGLISH
+           </button>
+           <button 
+             onClick={() => setLanguage('ru')}
+             className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${language === 'ru' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}
+           >
+             РУССКИЙ
+           </button>
+        </div>
+
+        <div className="p-10 max-w-[1600px] mx-auto pt-20 md:pt-10">
           
           <div style={{ display: mode === AppMode.DOCUMENT ? 'block' : 'none' }}>
             <DocAnalyzer onProcessingComplete={handleProcessingComplete} />
@@ -78,7 +97,7 @@ const App: React.FC = () => {
                 <CheckCircle2 size={20} />
               </div>
               <div>
-                <h4 className="font-bold text-white text-sm uppercase tracking-wide">System Notification</h4>
+                <h4 className="font-bold text-white text-sm uppercase tracking-wide">{t('systemNotification')}</h4>
                 <p className="text-sm text-slate-400 mt-1 leading-relaxed">{notification.message}</p>
               </div>
               <button 

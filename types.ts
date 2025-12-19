@@ -44,6 +44,8 @@ export interface StructuredDocument {
 export enum AppMode {
   DOCUMENT = 'document',
   NATIVE = 'native',
+  MISTRAL = 'mistral',
+  PYTHON_SERVICE = 'python_service',
   TRANSLATE = 'translate',
   GAME = 'game',
 }

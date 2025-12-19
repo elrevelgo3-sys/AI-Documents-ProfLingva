@@ -1,82 +1,51 @@
+
 import { StructuredDocument } from '../types';
 
 const PROXY_URL = '/api/proxy';
 
-// JSON Schema definition for Document Structure
-const DOCUMENT_SCHEMA = {
-  type: "object",
-  properties: {
-    elements: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          id: { type: "string" },
-          type: { 
-            type: "string", 
-            enum: ['paragraph', 'heading_1', 'heading_2', 'heading_3', 'table', 'image', 'signature', 'stamp', 'header', 'footer', 'list_item'] 
-          },
-          content: { type: "string" },
-          style: {
-            type: "object",
-            properties: {
-              font_name: { type: "string" },
-              font_size: { type: "number" },
-              bold: { type: "boolean" },
-              italic: { type: "boolean" },
-              color: { type: "string" },
-              alignment: { type: "string", enum: ['left', 'center', 'right', 'justify'] }
-            },
-            required: ['font_size', 'bold', 'italic', 'color', 'alignment']
-          },
-          data: {
-            type: "object",
-            properties: {
-              rows: { type: "array", items: { type: "array", items: { type: "string" } } }
-            }
-          },
-          bbox: {
-            type: "array",
-            items: { type: "number" },
-            description: "[ymin, xmin, ymax, xmax] coordinates normalized to 0-1000 scale"
-          }
-        },
-        required: ['id', 'type', 'content', 'style', 'bbox']
-      }
-    }
-  },
-  required: ['elements']
-};
+/**
+ * Sends a batch of images (Blobs) to Gemini and gets a structured JSON array back.
+ * Optimization: Saves tokens by sending the System Prompt only once for N images.
+ */
+export const analyzeBatch = async (images: Blob[]): Promise<StructuredDocument[]> => {
+  // 1. Optimize all images in parallel
+  const base64Images = await Promise.all(images.map(img => optimizeImageForAI(img)));
 
-export const analyzeDocument = async (fileOrBlob: File | Blob): Promise<StructuredDocument> => {
-  const base64Data = await fileToGenerativePart(fileOrBlob);
-  const mimeType = fileOrBlob.type || 'image/png';
-  
-  const systemPrompt = `You are an advanced document digitization AI. 
-  Analyze the provided image and extract its structure.
-  
-  INSTRUCTIONS:
-  1. Identify all text elements (paragraphs, headings, lists).
-  2. VISUALS: Detect all Logos, Photos, Signatures, and Stamps. Classify them exactly as 'image', 'signature', or 'stamp'.
-  3. COORDINATES: For every element, provide a precise bounding box [ymin, xmin, ymax, xmax] on a 0-1000 scale. 
-     - For 'signature' and 'stamp', the bbox must be tight around the ink.
-  4. STYLES: Estimate font name, size (pt), boldness, italics, and text color.
-  5. TABLES: Extract full table data into the 'data.rows' property.
+  const systemPrompt = `You are the "Universal Enterprise Digitizer".
+  Your mission is to convert the provided sequential document pages into structured JSON.
 
-  Output must be valid JSON adhering to this schema:
-  ${JSON.stringify(DOCUMENT_SCHEMA, null, 2)}
-  `;
+  INPUT: A sequence of document page images.
+  OUTPUT: A JSON Object containing a single key "pages", which is an ARRAY of page objects.
+  
+  FOR EACH PAGE (Image):
+  1. **Structure**: Detect paragraphs, headers (h1-h3), and lists.
+  2. **Tables**: CRITICAL. If you see grid-like data, output type 'table'. Return rows as arrays of strings.
+  3. **Visuals**: Detect images, signatures, and stamps. Return accurate bounding boxes [ymin, xmin, ymax, xmax] (0-1000 scale).
+
+  CRITICAL RULES:
+  - The "pages" array MUST contain exactly ${images.length} entries, corresponding to the input images in order.
+  - If a page is blank, return an empty elements array for that index.
+  - Output valid JSON only.`;
+
+  // 2. Construct Multimodal content array
+  const userContent: any[] = [
+    { type: "text", text: `Analyze these ${images.length} pages and return the JSON structure.` }
+  ];
+
+  base64Images.forEach(b64 => {
+    userContent.push({
+        type: "image_url",
+        image_url: { url: `data:image/jpeg;base64,${b64}` }
+    });
+  });
 
   const payload = {
-    model: "google/gemini-2.0-flash-001", // Using Gemini 2.0 Flash via OpenRouter for best speed/accuracy balance
+    model: "google/gemini-2.5-flash", 
     messages: [
       { role: "system", content: systemPrompt },
       { 
         role: "user", 
-        content: [
-          { type: "text", text: "Analyze this document and return the structural JSON." },
-          { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Data.data}` } }
-        ]
+        content: userContent
       }
     ],
     response_format: { type: "json_object" }
@@ -84,28 +53,78 @@ export const analyzeDocument = async (fileOrBlob: File | Blob): Promise<Structur
 
   const data = await callOpenRouter(payload);
   
-  const content = data.choices?.[0]?.message?.content;
+  let content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error("AI returned empty content");
   
+  content = content.replace(/```json/g, '').replace(/```/g, '').trim();
+  
+  const firstBrace = content.indexOf('{');
+  const lastBrace = content.lastIndexOf('}');
+  
+  if (firstBrace !== -1 && lastBrace !== -1) {
+    content = content.substring(firstBrace, lastBrace + 1);
+  }
+
   try {
-    return JSON.parse(content) as StructuredDocument;
+    const parsed = JSON.parse(content);
+    if (parsed.pages && Array.isArray(parsed.pages)) {
+        return parsed.pages as StructuredDocument[];
+    }
+    // Fallback if AI forgets to wrap in "pages" key but returns a single object (edge case for batch size 1)
+    if (parsed.elements) {
+        return [parsed] as StructuredDocument[];
+    }
+    throw new Error("Invalid structure");
   } catch (e) {
-    console.error("Failed to parse JSON response", content);
-    throw new Error("Invalid JSON response from AI");
+    console.error("Failed to parse JSON batch response", content);
+    throw new Error("Invalid JSON response from AI. Batch processing failed.");
   }
 };
 
-export const translateText = async (text: string, sourceLang: string, targetLang: string): Promise<string> => {
-  const systemPrompt = `You are a professional translator for an enterprise translation bureau.
-  Translate the user's text from ${sourceLang} to ${targetLang}.
+/**
+ * Legacy support for single document (wraps batch)
+ */
+export const analyzeDocument = async (fileOrBlob: File | Blob): Promise<StructuredDocument> => {
+    const results = await analyzeBatch([fileOrBlob]);
+    return results[0];
+};
+
+interface TranslationOptions {
+    sourceLang: string;
+    targetLang: string;
+    domain?: string;
+    tone?: string;
+    glossary?: { term: string; translation: string }[];
+}
+
+export const translateText = async (text: string, options: TranslationOptions): Promise<string> => {
+  const { sourceLang, targetLang, domain = 'General', tone = 'Professional', glossary = [] } = options;
+
+  let glossaryInstruction = "";
+  if (glossary.length > 0) {
+      glossaryInstruction = `
+      CRITICAL GLOSSARY INSTRUCTIONS:
+      You MUST strictly use the following terminology. Do not translate these terms differently:
+      ${glossary.map(g => `- "${g.term}" -> "${g.translation}"`).join('\n')}
+      `;
+  }
+
+  const systemPrompt = `
+  You are a professional linguist and subject-matter expert in the ${domain} field.
   
-  Rules:
-  1. Maintain professional tone and industry-standard terminology.
-  2. Preserve original formatting logic.
-  3. Return ONLY the translated text, no conversational filler.`;
+  TASK: Translate the input text from ${sourceLang} to ${targetLang}.
+  
+  GUIDELINES:
+  1. **Tone**: Maintain a ${tone} tone throughout the text.
+  2. **Accuracy**: Prioritize meaning and nuance over literal translation.
+  3. **Style**: Ensure natural flow in the target language.
+  ${glossaryInstruction}
+  
+  Return ONLY the translated text. Do not include explanations.
+  `;
 
   const payload = {
-    model: "google/gemini-2.0-flash-001",
+    model: "google/gemini-2.5-flash",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: text }
@@ -117,37 +136,68 @@ export const translateText = async (text: string, sourceLang: string, targetLang
 };
 
 async function callOpenRouter(body: any) {
-  // Use the local proxy which adds the key and forwards to OpenRouter
   const response = await fetch(PROXY_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    // Try to parse error as JSON if possible
-    try {
-        const errJson = JSON.parse(errText);
-        throw new Error(errJson.error || `API Error ${response.status}`);
-    } catch {
-        throw new Error(`API Error ${response.status}: ${errText}`);
-    }
+  if (response.status === 404) {
+    throw new Error("Proxy Endpoint Not Found. If running locally, please ensure the backend proxy is configured or use 'vercel dev'.");
   }
 
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`API Error ${response.status}: ${errorText.substring(0, 100)}...`);
+  }
+  
   return response.json();
 }
 
-async function fileToGenerativePart(file: File | Blob): Promise<{ data: string; mimeType: string }> {
+/**
+ * Optimizes an image for AI processing.
+ * 1. Resizes if dimension > 1536px (Gemini Flash optimal)
+ * 2. Converts to JPEG with 0.7 quality
+ * Returns base64 string without prefix.
+ */
+async function optimizeImageForAI(file: File | Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result as string;
-      const base64 = result.split(',')[1];
-      resolve({
-        data: base64,
-        mimeType: file.type || 'image/png' 
-      });
+    reader.onload = (readerEvent) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const MAX_DIM = 1536; // Optimal for Gemini Flash Vision
+
+        if (width > MAX_DIM || height > MAX_DIM) {
+          if (width > height) {
+            height = Math.round((height * MAX_DIM) / width);
+            width = MAX_DIM;
+          } else {
+            width = Math.round((width * MAX_DIM) / height);
+            height = MAX_DIM;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            reject(new Error("Could not get canvas context"));
+            return;
+        }
+        
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(0,0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        resolve(dataUrl.split(',')[1]);
+      };
+      img.onerror = () => reject(new Error("Failed to load image for optimization"));
+      img.src = readerEvent.target?.result as string;
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);

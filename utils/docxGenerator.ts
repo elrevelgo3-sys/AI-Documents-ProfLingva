@@ -1,4 +1,5 @@
-import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel, AlignmentType, ImageRun, WidthType, BorderStyle, PageBreak, Footer, Header, PageNumber } from 'docx';
+
+import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel, AlignmentType, ImageRun, WidthType, BorderStyle, PageBreak, Footer, Header, PageNumber, TableLayoutType } from 'docx';
 import saveAs from 'file-saver';
 import { StructuredDocument, ElementType } from '../types';
 
@@ -6,7 +7,7 @@ import { StructuredDocument, ElementType } from '../types';
  * Crops an image from the source file based on Gemini 0-1000 normalized coordinates.
  * Adds padding to ensure the full element is captured.
  */
-async function cropImageFromSource(sourceBlob: Blob, bbox: number[]): Promise<{ dataUrl: string, width: number, height: number, originalPageWidth: number } | null> {
+export async function cropImageFromSource(sourceBlob: Blob, bbox: number[]): Promise<{ dataUrl: string, width: number, height: number, originalPageWidth: number } | null> {
   if (!bbox || bbox.length !== 4) return null;
   
   return new Promise((resolve) => {
@@ -17,10 +18,20 @@ async function cropImageFromSource(sourceBlob: Blob, bbox: number[]): Promise<{ 
     img.onload = () => {
       const canvas = document.createElement('canvas');
       // Gemini bbox: [ymin, xmin, ymax, xmax]
-      let [ymin, xmin, ymax, xmax] = bbox;
+      // Mistral sometimes returns [ymin, xmin, ymax, xmax] OR [xmin, ymin, xmax, ymax].
+      // Standardize: coordinates should be < 1000.
+      
+      let [c1, c2, c3, c4] = bbox;
+      
+      // Determine which are Y and X. Typically Y is first in Gemini, but standard box is usually [x,y,w,h] or [x,y,x2,y2].
+      // The prompt asks for [ymin, xmin, ymax, xmax].
+      let ymin = c1;
+      let xmin = c2;
+      let ymax = c3;
+      let xmax = c4;
 
-      // Add 1.5% padding to the bounding box to prevent cutting off edges
-      const padding = 15; // 15/1000 = 1.5%
+      // Add 1% padding to the bounding box to prevent cutting off edges, but not too much to grab neighbor text
+      const padding = 10; // 10/1000 = 1%
       ymin = Math.max(0, ymin - padding);
       xmin = Math.max(0, xmin - padding);
       ymax = Math.min(1000, ymax + padding);
@@ -45,6 +56,10 @@ async function cropImageFromSource(sourceBlob: Blob, bbox: number[]): Promise<{ 
         resolve(null);
         return;
       }
+      
+      // Draw white background first (for transparency)
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, realW, realH);
       
       ctx.drawImage(img, realX, realY, realW, realH, 0, 0, realW, realH);
       
@@ -136,20 +151,30 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
             children: rowContent.map(cellText => 
               new TableCell({
                 children: [new Paragraph({ 
-                    children: [new TextRun({ text: cellText || '', size: 20 })], // Default table font 10pt
+                    children: [new TextRun({ 
+                        text: cellText || '', 
+                        size: 18, // 9pt font for tables (compact data)
+                        font: "Arial"
+                    })],
                 })],
+                // Using percentage width but letting AutoFit adjust
                 width: { size: 100 / rowContent.length, type: WidthType.PERCENTAGE },
                 borders: {
-                  top: { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" },
-                  bottom: { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" },
-                  left: { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" },
-                  right: { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" },
+                  top: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                  bottom: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                  left: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                  right: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
                 }
               })
             )
           })
         );
-        children.push(new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } }));
+        
+        children.push(new Table({ 
+            rows, 
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            layout: TableLayoutType.AUTOFIT // Important: Allows columns to adjust to content like in browsers
+        }));
         children.push(new Paragraph({ text: "" })); // Spacer
       } 
       else if ((element.type === ElementType.IMAGE || element.type === ElementType.SIGNATURE || element.type === ElementType.STAMP) && source && element.bbox) {

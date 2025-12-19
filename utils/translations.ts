@@ -1,0 +1,155 @@
+
+export type Language = 'en' | 'ru';
+
+export const translations = {
+  en: {
+    // Sidebar
+    smartDigitization: 'Smart Digitization',
+    smartDigitizationDesc: 'AI Structure Recovery (Gemini)',
+    instantNativePdf: 'Pro PDF Converter',
+    instantNativePdfDesc: 'High-Fidelity Cloud Conversion',
+    neuralTranslation: 'Neural Translation',
+    neuralTranslationDesc: 'Enterprise Linguistic Core',
+    executiveLounge: 'Executive Lounge',
+    executiveLoungeDesc: 'Cognitive Reset Zone',
+    moduleSelection: 'Module Selection',
+    systemOperational: 'System Operational',
+    itResident: 'IT Resident',
+    
+    // DocAnalyzer (Smart Digitization)
+    smartCoreTitle: 'Smart Digitization Core',
+    enterpriseEdition: 'Enterprise Edition',
+    autoOcr: 'Automated OCR & Structural Recovery',
+    secureUpload: 'Secure Document Upload',
+    dragDrop: 'Drag & drop PDF, PNG, or JPG files.',
+    maxBatch: 'Max batch size: 5 documents',
+    preview: 'Preview',
+    export: 'Export',
+    dismiss: 'Dismiss',
+    processingQueue: 'PROCESSING QUEUE...',
+    initiateBatch: 'INITIATE BATCH PROCESS',
+    statusIdle: 'Ready',
+    statusInitializing: 'Initializing Core...',
+    statusAnalyzing: 'Neural Processing...',
+    statusReady: 'Ready for Export',
+    statusFailed: 'Processing Failed',
+    systemIdle: 'System Idle. Waiting for input stream.',
+    
+    // Native Converter
+    convertApiTitle: 'Pro PDF Converter',
+    convertApiDesc: 'Enterprise-grade conversion via Cloud API',
+    ocrMode: 'OCR Mode (Scans)',
+    docLanguage: 'Document Language',
+    missingKeyTitle: 'Missing API Key',
+    missingKeyDesc: 'To use this feature, please add CONVERT_API_SECRET to your .env file.',
+    uploadPdf: 'Upload PDF Documents',
+    supportsNative: 'Supports both Native PDFs and Scanned Images',
+    convertAll: 'Convert All Files',
+    uploading: 'Uploading...',
+    convertingCloud: 'Converting on Cloud...',
+    downloaded: 'Downloaded',
+    
+    // Translator
+    neuralEngine: 'Professional CAT System',
+    contextAware: 'Context Aware',
+    professionalCat: 'Glossary Enforcement',
+    from: 'From',
+    to: 'To',
+    detectLanguage: 'Detect Language',
+    translateBtn: 'TRANSLATE',
+    processing: 'PROCESSING...',
+    originalSource: 'Original Source',
+    output: 'Output',
+    enterText: 'Enter text for professional translation...',
+    chars: 'CHARS',
+    copy: 'COPY',
+    copied: 'COPIED',
+    
+    // Game
+    loungeTitle: 'Executive Lounge',
+    loungeDesc: 'Cognitive reset zone. Engage neural plasticity while data processes.',
+    moves: 'Moves:',
+    matches: 'Matches:',
+    complete: 'Cognitive Calibration Complete',
+    
+    // General
+    brandingSettings: 'Branding Settings',
+    batchComplete: 'Batch processing successfully completed.',
+    systemNotification: 'System Notification',
+  },
+  ru: {
+    // Sidebar
+    smartDigitization: 'Умная Оцифровка',
+    smartDigitizationDesc: 'AI Реконструкция (Gemini)',
+    instantNativePdf: 'Pro PDF Конвертер',
+    instantNativePdfDesc: 'Высокоточная облачная конвертация',
+    neuralTranslation: 'Нейро-перевод',
+    neuralTranslationDesc: 'Лингвистическое ядро',
+    executiveLounge: 'Комната Отдыха',
+    executiveLoungeDesc: 'Зона когнитивной разгрузки',
+    moduleSelection: 'Выбор Модуля',
+    systemOperational: 'Система активна',
+    itResident: 'Резидент IT',
+
+    // DocAnalyzer (Smart Digitization)
+    smartCoreTitle: 'Ядро Умной Оцифровки',
+    enterpriseEdition: 'Версия Enterprise',
+    autoOcr: 'Авто-OCR и Структурирование',
+    secureUpload: 'Безопасная Загрузка',
+    dragDrop: 'Перетащите PDF, PNG или JPG файлы.',
+    maxBatch: 'Макс. пакет: 5 документов',
+    preview: 'Просмотр',
+    export: 'Скачать',
+    dismiss: 'Убрать',
+    processingQueue: 'ОБРАБОТКА ОЧЕРЕДИ...',
+    initiateBatch: 'ЗАПУСТИТЬ ОБРАБОТКУ',
+    statusIdle: 'Готов к работе',
+    statusInitializing: 'Инициализация ядра...',
+    statusAnalyzing: 'Нейро-обработка...',
+    statusReady: 'Готово к экспорту',
+    statusFailed: 'Ошибка обработки',
+    systemIdle: 'Система в ожидании. Ожидание потока данных.',
+
+    // Native Converter
+    convertApiTitle: 'Pro PDF Конвертер',
+    convertApiDesc: 'Корпоративная конвертация через облачное API',
+    ocrMode: 'Режим OCR (Сканы)',
+    docLanguage: 'Язык документа',
+    missingKeyTitle: 'Отсутствует API Ключ',
+    missingKeyDesc: 'Для использования добавьте CONVERT_API_SECRET в .env файл.',
+    uploadPdf: 'Загрузить PDF Документы',
+    supportsNative: 'Поддерживает цифровые PDF и сканы',
+    convertAll: 'Конвертировать Всё',
+    uploading: 'Загрузка...',
+    convertingCloud: 'Конвертация в облаке...',
+    downloaded: 'Скачано',
+
+    // Translator
+    neuralEngine: 'Профессиональная CAT Система',
+    contextAware: 'Контекстный анализ',
+    professionalCat: 'Глоссарий',
+    from: 'Из',
+    to: 'В',
+    detectLanguage: 'Определить язык',
+    translateBtn: 'ПЕРЕВЕСТИ',
+    processing: 'ОБРАБОТКА...',
+    originalSource: 'Оригинал',
+    output: 'Результат',
+    enterText: 'Введите текст для профессионального перевода...',
+    chars: 'СИМВ.',
+    copy: 'КОПИРОВАТЬ',
+    copied: 'СКОПИРОВАНО',
+
+    // Game
+    loungeTitle: 'Комната Отдыха',
+    loungeDesc: 'Зона перезагрузки. Активируйте нейропластичность пока данные обрабатываются.',
+    moves: 'Ходы:',
+    matches: 'Совпадения:',
+    complete: 'Когнитивная калибровка завершена',
+
+    // General
+    brandingSettings: 'Настройки Брендинга',
+    batchComplete: 'Пакетная обработка успешно завершена.',
+    systemNotification: 'Системное Уведомление',
+  }
+};

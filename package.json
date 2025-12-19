@@ -13,7 +13,7 @@
     "docx": "^8.5.0",
     "file-saver": "^2.0.5",
     "lucide-react": "^0.344.0",
-    "pdfjs-dist": "4.0.379",
+    "pdfjs-dist": "5.4.449",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
