@@ -1,15 +1,14 @@
 
 import { StructuredDocument, DocElement, ElementType } from '../types';
 
-// Using a free/cheap model on OpenRouter that supports vision well.
-// google/gemini-2.0-flash-lite-preview-02-05:free is usually available and free.
-// Alternatively: google/gemini-2.0-flash-001
-const OPENROUTER_MODEL = "google/gemini-2.0-flash-lite-preview-02-05:free";
-const TRANSLATION_MODEL = "google/gemini-2.0-flash-lite-preview-02-05:free";
+// SWITCHED TO OPENAI GPT-4o-MINI AS REQUESTED.
+// It is reliable, cheap (almost free), supports vision perfectly, and has no geo-blocking issues via OpenRouter.
+const OPENROUTER_MODEL = "openai/gpt-4o-mini";
+const TRANSLATION_MODEL = "openai/gpt-4o-mini";
 
 /**
  * Helper to call the internal proxy which forwards to OpenRouter.
- * This prevents CORS issues and Geo-blocking by Google.
+ * This prevents CORS issues and Geo-blocking.
  */
 async function callOpenRouter(messages: any[], model: string = OPENROUTER_MODEL, jsonMode: boolean = false): Promise<string> {
     const response = await fetch('/api/proxy', {
@@ -20,7 +19,7 @@ async function callOpenRouter(messages: any[], model: string = OPENROUTER_MODEL,
         body: JSON.stringify({
             model: model,
             messages: messages,
-            // Add JSON mode parameter if supported/needed by specific models
+            // GPT-4o supports json_object response format
             response_format: jsonMode ? { type: "json_object" } : undefined
         }),
     });

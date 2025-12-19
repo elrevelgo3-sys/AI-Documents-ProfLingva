@@ -1,9 +1,8 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Upload, Table as TableIcon, Copy, Loader2, CheckCircle2, AlertCircle, Trash2, ArrowRight, ClipboardCopy } from 'lucide-react';
+import { Upload, Table as TableIcon, Copy, Loader2, CheckCircle2, AlertCircle, Trash2, ArrowRight, ClipboardCopy, Download } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { extractTableFromImage, TableExtractionResult } from '../services/geminiService';
-// import { downloadDocx } from '../utils/docxGenerator'; // Disabled
 import { ElementType, StructuredDocument } from '../types';
 
 interface TableJob {
@@ -80,32 +79,29 @@ const TableAnalyzer: React.FC = () => {
     });
   };
 
+  const getDocHTMLWrapper = (htmlContent: string) => {
+    return `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+          <meta charset="utf-8">
+          <style>
+              table { border-collapse: collapse; width: 100%; mso-border-alt: solid windowtext .5pt; }
+              td, th { border: 1px solid windowtext; padding: 5px; mso-border-alt: solid windowtext .5pt; }
+          </style>
+      </head>
+      <body>
+          <!--StartFragment-->
+          ${htmlContent}
+          <!--EndFragment-->
+      </body>
+      </html>
+    `;
+  };
+
   const copyTableToClipboard = async (id: string, result: TableExtractionResult) => {
       if (!result) return;
       try {
-          // MAGIC SAUCE FOR WORD:
-          // 1. Add XML Namespaces for Office
-          // 2. Wrap in specific html/head/body tags
-          // 3. Use 'windowtext' for borders which maps to Word's default border color
-          const wordHtmlWrapper = `
-            <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-            <head>
-                <meta charset="utf-8">
-                <style>
-                    table { border-collapse: collapse; width: 100%; mso-border-alt: solid windowtext .5pt; }
-                    td, th { border: 1px solid windowtext; padding: 5px; mso-border-alt: solid windowtext .5pt; }
-                </style>
-            </head>
-            <body>
-                <!--StartFragment-->
-                ${result.html}
-                <!--EndFragment-->
-            </body>
-            </html>
-          `;
-
-          const blob = new Blob([wordHtmlWrapper], { type: 'text/html' });
-          
+          const blob = new Blob([getDocHTMLWrapper(result.html)], { type: 'text/html' });
           await navigator.clipboard.write([
               new ClipboardItem({ 
                   'text/html': blob
@@ -120,6 +116,28 @@ const TableAnalyzer: React.FC = () => {
           console.error("Clipboard write failed", err);
           alert("Click 'Allow' to copy to clipboard.");
       }
+  };
+
+  const downloadTableAsDoc = (result: TableExtractionResult) => {
+     if (!result) return;
+     
+     // Creating a Blob with Word-compatible HTML
+     const html = getDocHTMLWrapper(result.html);
+     const blob = new Blob(['\ufeff', html], {
+         type: 'application/msword'
+     });
+     
+     // Create download link
+     const url = URL.createObjectURL(blob);
+     const link = document.createElement('a');
+     link.href = url;
+     link.download = `table_${new Date().toISOString().slice(0,10)}.doc`; // .doc opens in Word fine
+     document.body.appendChild(link);
+     link.click();
+     
+     // Cleanup
+     document.body.removeChild(link);
+     URL.revokeObjectURL(url);
   };
 
   return (
@@ -212,7 +230,15 @@ const TableAnalyzer: React.FC = () => {
                     </div>
 
                     <div className="mt-4 pt-4 border-t border-slate-200 flex justify-end gap-3">
-                        {/* Download button removed due to generator issues */}
+                        <button 
+                            onClick={() => job.result && downloadTableAsDoc(job.result)}
+                            disabled={!job.result}
+                            className="flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold text-sm shadow-md transition-all bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-brand-600 disabled:opacity-50"
+                        >
+                            <Download size={18} />
+                            {t('downloadTable')}
+                        </button>
+                        
                         <button 
                             onClick={() => job.result && copyTableToClipboard(job.id, job.result)}
                             disabled={!job.result}
