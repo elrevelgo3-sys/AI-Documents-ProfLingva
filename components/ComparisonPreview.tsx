@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { X, ChevronLeft, ChevronRight, Layers, Table, PenTool, Stamp, ScanLine, Eye } from 'lucide-react';
 import { StructuredDocument, ElementType } from '../types';
@@ -16,10 +17,10 @@ const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({ originalImage, da
 
   // Statistics for X-Ray
   const stats = {
-    tables: data.elements.filter(e => e.type === ElementType.TABLE).length,
-    signatures: data.elements.filter(e => e.type === ElementType.SIGNATURE).length,
-    stamps: data.elements.filter(e => e.type === ElementType.STAMP).length,
-    images: data.elements.filter(e => e.type === ElementType.IMAGE).length,
+    tables: data.elements ? data.elements.filter(e => e.type === ElementType.TABLE).length : 0,
+    signatures: data.elements ? data.elements.filter(e => e.type === ElementType.SIGNATURE).length : 0,
+    stamps: data.elements ? data.elements.filter(e => e.type === ElementType.STAMP).length : 0,
+    images: data.elements ? data.elements.filter(e => e.type === ElementType.IMAGE).length : 0,
   };
 
   const handleDrag = (e: React.MouseEvent | React.TouchEvent) => {
@@ -45,13 +46,14 @@ const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({ originalImage, da
   // Simple renderer to simulate the "After" view based on JSON data
   const renderDigitizedView = () => (
     <div className="bg-white min-h-full p-8 font-serif text-slate-900 shadow-inner">
-      {data.elements.map((el, idx) => {
+      {data.elements && data.elements.map((el, idx) => {
+        // DEFENSIVE CODING: Use optional chaining (?.) and defaults (||) because AI might omit style object
         const style = {
-            textAlign: el.style.alignment as any,
-            fontWeight: el.style.bold ? 'bold' : 'normal',
-            fontStyle: el.style.italic ? 'italic' : 'normal',
-            color: el.style.color,
-            fontSize: `${el.style.font_size * 1.5}px` // Scale for screen
+            textAlign: (el.style?.alignment || 'left') as any,
+            fontWeight: el.style?.bold ? 'bold' : 'normal',
+            fontStyle: el.style?.italic ? 'italic' : 'normal',
+            color: el.style?.color || '#000000',
+            fontSize: `${(el.style?.font_size || 11) * 1.5}px` // Scale for screen, default to 11pt
         };
 
         if (el.type === ElementType.TABLE && el.data?.rows) {
