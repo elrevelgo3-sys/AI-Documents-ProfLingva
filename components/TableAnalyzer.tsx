@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Table as TableIcon, Copy, Loader2, CheckCircle2, AlertCircle, Trash2, ArrowRight, ClipboardCopy } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { extractTableFromImage, TableExtractionResult } from '../services/geminiService';
-import { downloadDocx } from '../utils/docxGenerator';
+// import { downloadDocx } from '../utils/docxGenerator'; // Disabled
 import { ElementType, StructuredDocument } from '../types';
 
 interface TableJob {
@@ -122,20 +122,6 @@ const TableAnalyzer: React.FC = () => {
       }
   };
 
-  const downloadDocxFile = async (job: TableJob) => {
-    if (!job.result) return;
-    const doc: StructuredDocument = {
-        elements: [{
-            id: 'table-1',
-            type: ElementType.TABLE,
-            content: '',
-            bbox: [10, 10, 900, 990],
-            data: { rows: job.result.rows }
-        }]
-    };
-    await downloadDocx([{ data: doc, source: job.file, pageNumber: 1 }], job.file.name.replace(/\.[^/.]+$/, ""));
-  };
-
   return (
     <div className="max-w-7xl mx-auto pb-20">
        <header className="mb-8 flex items-center gap-4">
@@ -226,13 +212,7 @@ const TableAnalyzer: React.FC = () => {
                     </div>
 
                     <div className="mt-4 pt-4 border-t border-slate-200 flex justify-end gap-3">
-                        <button 
-                            onClick={() => job.result && downloadDocxFile(job)}
-                            disabled={!job.result}
-                            className="text-slate-500 hover:text-brand-600 text-sm font-bold px-3 transition disabled:opacity-50"
-                        >
-                            Download DOCX
-                        </button>
+                        {/* Download button removed due to generator issues */}
                         <button 
                             onClick={() => job.result && copyTableToClipboard(job.id, job.result)}
                             disabled={!job.result}
