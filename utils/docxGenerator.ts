@@ -1,3 +1,4 @@
+
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel, AlignmentType, ImageRun, WidthType, BorderStyle, PageBreak, Footer, Header, PageNumber, TableLayoutType, FrameAnchorType, HorizontalPositionAlign, VerticalPositionAlign, HeightRule } from 'docx';
 import saveAs from 'file-saver';
 import { StructuredDocument, ElementType } from '../types';
@@ -82,7 +83,7 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
       
       // Calculate Width/Height in Twips
       const widthPercent = Math.abs(xmax - xmin) / 1000;
-      const heightPercent = Math.abs(ymax - ymin) / 1000;
+      // const heightPercent = Math.abs(ymax - ymin) / 1000;
       
       const widthTwips = Math.floor(widthPercent * PAGE_WIDTH_TWIPS);
       // const heightTwips = Math.floor(heightPercent * PAGE_HEIGHT_TWIPS);
@@ -90,7 +91,8 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
       const xTwips = Math.floor((xmin / 1000) * PAGE_WIDTH_TWIPS);
       const yTwips = Math.floor((ymin / 1000) * PAGE_HEIGHT_TWIPS);
 
-      const alignmentMap = {
+      // Fix TS7053: Explicitly type the map
+      const alignmentMap: Record<string, (typeof AlignmentType)[keyof typeof AlignmentType]> = {
         'l': AlignmentType.LEFT,
         'c': AlignmentType.CENTER,
         'r': AlignmentType.RIGHT,
@@ -101,7 +103,8 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
         'justify': AlignmentType.JUSTIFIED,
       };
       
-      const align = alignmentMap[element.style?.alignment as any] || AlignmentType.LEFT;
+      const styleAlign = element.style?.alignment || 'left';
+      const align = alignmentMap[styleAlign] || AlignmentType.LEFT;
       
       // Force Black unless specifically Red (Blue/header often hallucinates)
       let color = "000000";
@@ -142,6 +145,9 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
           try {
               const b64 = await cropImage(source, element.bbox);
               if (b64) {
+                  // Fix for TS error: convert base64 to Uint8Array and add 'type'
+                  const imageBytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+                  
                   children.push(new Paragraph({
                       frame: {
                           type: "absolute",
@@ -155,8 +161,8 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
                       },
                       children: [
                           new ImageRun({
-                              data: b64,
-                              transformation: { width: widthTwips / 20, height: (widthTwips / 20) * 0.75 }, // Approx px conv
+                              data: imageBytes,
+                              transformation: { width: widthTwips / 20, height: (widthTwips / 20) * 0.75 }, 
                               type: "png"
                           })
                       ]
