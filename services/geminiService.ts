@@ -17,7 +17,7 @@ export const analyzeBatch = async (images: Blob[]): Promise<StructuredDocument[]
   INPUT: A sequence of document page images.
   OUTPUT: A JSON Object containing a single key "pages", which is an ARRAY of page objects.
   
-  CRITICAL RULES FOR OCR (Gemini 1.5 Flash Optimization):
+  CRITICAL RULES FOR OCR (Gemini 2.0 Flash Optimization):
   1. **TEXT IS PRIORITY**: Do NOT return large parts of the page as "type": "image". You MUST extract the text as "paragraph", "heading", or "table".
   2. **IMAGES**: Only use "type": "image" for actual photos, logos, or illustrations. DO NOT use it for text blocks.
   3. **TABLES**: If you see a grid, it is a TABLE. Return 'data.rows'.
@@ -45,7 +45,8 @@ export const analyzeBatch = async (images: Blob[]): Promise<StructuredDocument[]
   });
 
   const payload = {
-    model: "google/gemini-1.5-flash", 
+    // SWITCHED TO 2.0 FLASH: Better OCR, high speed, cost-effective.
+    model: "google/gemini-2.0-flash-001", 
     messages: [
       { role: "system", content: systemPrompt },
       { 
@@ -129,8 +130,8 @@ export const translateText = async (text: string, options: TranslationOptions): 
   `;
 
   const payload = {
-    // SWITCHED TO 1.5 FLASH: Much cheaper for translation tasks too.
-    model: "google/gemini-1.5-flash",
+    // SWITCHED TO 2.0 FLASH: Excellent multilingual capabilities.
+    model: "google/gemini-2.0-flash-001",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: text }
