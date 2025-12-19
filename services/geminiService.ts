@@ -88,8 +88,10 @@ export const analyzeBatch = async (images: Blob[]): Promise<StructuredDocument[]
     });
   });
 
+  // Use gemini-2.0-flash-001 or gemini-2.5-flash-image depending on needs.
+  // 2.0 Flash is very capable for OCR.
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash-001",
+    model: "gemini-2.0-flash-001", 
     contents: { parts },
     config: {
         systemInstruction: systemPrompt,
@@ -97,6 +99,7 @@ export const analyzeBatch = async (images: Blob[]): Promise<StructuredDocument[]
     }
   });
   
+  // Directly access .text property
   let content = response.text;
   if (!content) throw new Error("AI returned empty content");
   

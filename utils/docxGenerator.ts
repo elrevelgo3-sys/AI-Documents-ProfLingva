@@ -142,8 +142,6 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
           try {
               const b64 = await cropImage(source, element.bbox);
               if (b64) {
-                  // Fix for TS2353: 'type' property is NOT allowed in ImageRun options in this version of docx.
-                  // The library detects type from the byte signature.
                   const imageBytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
                   
                   children.push(new Paragraph({
