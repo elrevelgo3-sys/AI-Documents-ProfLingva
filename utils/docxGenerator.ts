@@ -11,27 +11,28 @@ export async function cropImageFromSource(sourceBlob: Blob, bbox: number[]): Pro
   if (!bbox || bbox.length !== 4) return null;
   
   return new Promise((resolve) => {
-    // Create a temporary URL for the source blob
     const sourceUrl = URL.createObjectURL(sourceBlob);
     const img = new Image();
 
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      // Gemini bbox: [ymin, xmin, ymax, xmax]
-      // Mistral sometimes returns [ymin, xmin, ymax, xmax] OR [xmin, ymin, xmax, ymax].
-      // Standardize: coordinates should be < 1000.
       
       let [c1, c2, c3, c4] = bbox;
       
-      // Determine which are Y and X. Typically Y is first in Gemini, but standard box is usually [x,y,w,h] or [x,y,x2,y2].
-      // The prompt asks for [ymin, xmin, ymax, xmax].
-      let ymin = c1;
-      let xmin = c2;
-      let ymax = c3;
-      let xmax = c4;
+      // Safety check for weird coordinates from Gemini Flash
+      let ymin = Math.min(c1, c3);
+      let xmin = Math.min(c2, c4);
+      let ymax = Math.max(c1, c3);
+      let xmax = Math.max(c2, c4);
+      
+      // If box is invalid/too small, assume full page width fallback or skip
+      if (xmax - xmin < 10 || ymax - ymin < 10) {
+           URL.revokeObjectURL(sourceUrl);
+           resolve(null);
+           return;
+      }
 
-      // Add 1% padding to the bounding box to prevent cutting off edges, but not too much to grab neighbor text
-      const padding = 10; // 10/1000 = 1%
+      const padding = 10; 
       ymin = Math.max(0, ymin - padding);
       xmin = Math.max(0, xmin - padding);
       ymax = Math.min(1000, ymax + padding);
@@ -42,30 +43,22 @@ export async function cropImageFromSource(sourceBlob: Blob, bbox: number[]): Pro
       const realW = ((xmax - xmin) / 1000) * img.width;
       const realH = ((ymax - ymin) / 1000) * img.height;
       
-      if (realW <= 0 || realH <= 0) {
-          URL.revokeObjectURL(sourceUrl); // Cleanup
-          resolve(null);
-          return;
-      }
-
       canvas.width = realW;
       canvas.height = realH;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        URL.revokeObjectURL(sourceUrl); // Cleanup
+        URL.revokeObjectURL(sourceUrl);
         resolve(null);
         return;
       }
       
-      // Draw white background first (for transparency)
+      // White background
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, realW, realH);
       
       ctx.drawImage(img, realX, realY, realW, realH, 0, 0, realW, realH);
       
       const dataUrl = canvas.toDataURL('image/png');
-      
-      // Clean up memory immediately after processing
       URL.revokeObjectURL(sourceUrl); 
       
       resolve({
@@ -77,7 +70,7 @@ export async function cropImageFromSource(sourceBlob: Blob, bbox: number[]): Pro
     };
 
     img.onerror = () => {
-        URL.revokeObjectURL(sourceUrl); // Cleanup on error
+        URL.revokeObjectURL(sourceUrl);
         resolve(null);
     };
 
@@ -95,8 +88,6 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
   if (!pages || pages.length === 0) return;
 
   const children: any[] = [];
-
-  // Sort pages by number to be safe
   const sortedPages = [...pages].sort((a, b) => a.pageNumber - b.pageNumber);
 
   for (let i = 0; i < sortedPages.length; i++) {
@@ -119,30 +110,24 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
       
       const align = alignmentMap[element.style?.alignment] || AlignmentType.LEFT;
       
-      // Strict Color Validation for docx library
-      const colorRaw = (element.style?.color || '000000').toLowerCase().trim();
-      let color = '000000';
-      const cleanHex = colorRaw.replace(/#/g, '');
-
-      // Check for valid hex formats
-      if (/^[0-9a-f]{6}$/.test(cleanHex)) {
-         color = cleanHex;
-      } else if (/^[0-9a-f]{3}$/.test(cleanHex)) {
-         // Expand 3-digit hex (e.g. f00 -> ff0000)
-         color = cleanHex.split('').map(c => c + c).join('');
-      }
-      // If color is invalid (e.g. 'black', 'rgb(...)'), it stays '000000'
+      // FORCE BLACK COLOR LOGIC
+      // Gemini Flash often hallucinates white color or transparent. We force black unless it's distinctly red/blue.
+      let colorRaw = (element.style?.color || '000000').toLowerCase().replace(/#/g, '');
       
-      const size = (element.style?.font_size || 11) * 2; // DOCX uses half-points. Default to 11pt if missing.
+      // If color is white or invalid hex, force black
+      if (colorRaw === 'ffffff' || colorRaw === 'fff' || !/^[0-9a-f]{6}$/.test(colorRaw)) {
+          colorRaw = '000000';
+      }
+      
+      const size = (element.style?.font_size || 11) * 2; 
 
-      // Apply robust styling based on Gemini's analysis
       const textRun = new TextRun({
         text: element.content || '',
         bold: element.style?.bold || false,
         italics: element.style?.italic || false,
-        color: color !== '000000' ? color : undefined, // Only apply color if valid non-black hex
+        color: colorRaw, 
         size: size,
-        font: element.style?.font_name || 'Arial', // Fallback to Arial which is standard
+        font: element.style?.font_name || 'Arial', 
       });
 
       if (element.type === ElementType.TABLE && element.data?.rows) {
@@ -153,11 +138,11 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
                 children: [new Paragraph({ 
                     children: [new TextRun({ 
                         text: cellText || '', 
-                        size: 18, // 9pt font for tables (compact data)
+                        size: 18, 
+                        color: "000000", // Force black in tables
                         font: "Arial"
                     })],
                 })],
-                // Using percentage width but letting AutoFit adjust
                 width: { size: 100 / rowContent.length, type: WidthType.PERCENTAGE },
                 borders: {
                   top: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
@@ -173,27 +158,21 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
         children.push(new Table({ 
             rows, 
             width: { size: 100, type: WidthType.PERCENTAGE },
-            layout: TableLayoutType.AUTOFIT // Important: Allows columns to adjust to content like in browsers
+            layout: TableLayoutType.AUTOFIT 
         }));
-        children.push(new Paragraph({ text: "" })); // Spacer
+        children.push(new Paragraph({ text: "" })); 
       } 
       else if ((element.type === ElementType.IMAGE || element.type === ElementType.SIGNATURE || element.type === ElementType.STAMP) && source && element.bbox) {
-        // Attempt to crop the image
         try {
           const croppedImage = await cropImageFromSource(source, element.bbox);
           
           if (croppedImage) {
-              // Calculate proportional size for DOCX
-              // Standard A4 printable width is approx 480-500pt (with margins)
               const DOCX_PAGE_WIDTH = 500; 
-              
-              // Calculate what percentage of the original page width this image occupied
               const widthRatio = croppedImage.width / croppedImage.originalPageWidth;
-              const targetWidth = Math.min(DOCX_PAGE_WIDTH, DOCX_PAGE_WIDTH * widthRatio * 1.2); // 1.2 boost for readability
+              const targetWidth = Math.min(DOCX_PAGE_WIDTH, DOCX_PAGE_WIDTH * widthRatio * 1.2); 
               const aspectRatio = croppedImage.height / croppedImage.width;
               const targetHeight = targetWidth * aspectRatio;
 
-              // DOCX library expects pure base64 string, not data URI
               const cleanBase64 = croppedImage.dataUrl.split(',')[1];
 
               children.push(new Paragraph({
@@ -202,17 +181,10 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
                           data: cleanBase64,
                           transformation: { width: targetWidth, height: targetHeight },
                           type: "png"
-                      } as any) // Type cast to avoid TS errors in some versions
+                      } as any)
                   ],
                   alignment: align,
                   spacing: { before: 100, after: 100 }
-              }));
-          } else {
-              children.push(new Paragraph({
-                  children: [
-                      new TextRun({ text: `[${element.type}]`, italics: true, color: "888888" })
-                  ],
-                  alignment: align
               }));
           }
         } catch (e) {
@@ -220,8 +192,7 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
         }
       }
       else {
-        // Text based elements
-        let headingLevel: any; // Using any to avoid strict enum mismatches
+        let headingLevel: any;
         if (element.type === ElementType.HEADING_1) headingLevel = HeadingLevel.HEADING_1;
         if (element.type === ElementType.HEADING_2) headingLevel = HeadingLevel.HEADING_2;
         if (element.type === ElementType.HEADING_3) headingLevel = HeadingLevel.HEADING_3;
@@ -230,7 +201,7 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
           children: [textRun],
           heading: headingLevel,
           alignment: align,
-          spacing: { after: 120, line: 276 } // 1.15 line spacing (240 * 1.15)
+          spacing: { after: 120, line: 276 }
         }));
       }
     }
@@ -241,9 +212,7 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
       properties: {},
       children: children,
       headers: {
-         default: new Header({
-             children: []
-         })
+         default: new Header({ children: [] })
       },
       footers: {
         default: new Footer({
@@ -251,30 +220,10 @@ export const downloadDocx = async (pages: PageResult[], originalFilename: string
             new Paragraph({
               alignment: AlignmentType.RIGHT,
               children: [
-                new TextRun({
-                  text: "Page ",
-                  color: "999999",
-                  size: 18,
-                  font: "Arial"
-                }),
-                new TextRun({
-                  children: [PageNumber.CURRENT],
-                  color: "999999",
-                  size: 18,
-                  font: "Arial"
-                }),
-                new TextRun({
-                  text: " of ",
-                  color: "999999",
-                  size: 18,
-                  font: "Arial"
-                }),
-                new TextRun({
-                  children: [PageNumber.TOTAL_PAGES],
-                  color: "999999",
-                  size: 18,
-                  font: "Arial"
-                }),
+                new TextRun({ text: "Page ", color: "999999", size: 18, font: "Arial" }),
+                new TextRun({ children: [PageNumber.CURRENT], color: "999999", size: 18, font: "Arial" }),
+                new TextRun({ text: " of ", color: "999999", size: 18, font: "Arial" }),
+                new TextRun({ children: [PageNumber.TOTAL_PAGES], color: "999999", size: 18, font: "Arial" }),
               ],
             }),
           ],

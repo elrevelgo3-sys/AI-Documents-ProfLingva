@@ -30,55 +30,41 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
   const { t } = useLanguage();
 
   // CRITICAL FIX: Load PDF Worker via Blob to bypass CORS
-  // Browser security blocks Workers loaded from cross-origin URLs (CDNs).
-  // We fetch the script content first, then create a local Blob URL.
   useEffect(() => {
     const setupWorker = async () => {
-      // Use the specific version matched in package.json
       const WORKER_CDN_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/build/pdf.worker.min.mjs';
-
       try {
-        // Check if already set to avoid re-fetching
         if (pdfjsLib.GlobalWorkerOptions.workerSrc && pdfjsLib.GlobalWorkerOptions.workerSrc.startsWith('blob:')) {
             return;
         }
-
         const response = await fetch(WORKER_CDN_URL);
         if (!response.ok) throw new Error("Failed to download worker script");
         
         const workerScript = await response.text();
         const blob = new Blob([workerScript], { type: 'text/javascript' });
         const blobUrl = URL.createObjectURL(blob);
-        
         pdfjsLib.GlobalWorkerOptions.workerSrc = blobUrl;
       } catch (error) {
-        console.warn("Failed to load PDF worker via Blob, falling back to CDN (may fail due to CORS)", error);
+        console.warn("Failed to load PDF worker via Blob, falling back to CDN", error);
         pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_CDN_URL;
       }
     };
-
     setupWorker();
   }, []);
 
   useEffect(() => {
     if (!globalProcessing) return;
     const isStillWorking = jobs.some(j => j.status === 'loading_pdf' || j.status === 'analyzing');
-    
     if (!isStillWorking) {
       setGlobalProcessing(false);
-      if (onProcessingComplete) {
-        onProcessingComplete();
-      }
+      if (onProcessingComplete) onProcessingComplete();
     }
   }, [jobs, globalProcessing, onProcessingComplete]);
 
-  // Cleanup function to revoke URLs when component unmounts to free memory
   useEffect(() => {
     return () => {
       jobs.forEach(job => {
-        if (job.previewUrl) {
-          URL.revokeObjectURL(job.previewUrl);
-        }
+        if (job.previewUrl) URL.revokeObjectURL(job.previewUrl);
       });
     };
   }, []); 
@@ -126,7 +112,6 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
 
   const convertPdfToImages = async (pdfFile: File, updateProgress: (msg: string) => void): Promise<Blob[]> => {
     const arrayBuffer = await pdfFile.arrayBuffer();
-    // Using standard font loading to prevent some rendering issues
     const loadingTask = pdfjsLib.getDocument({
         data: arrayBuffer,
         cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/cmaps/',
@@ -141,14 +126,14 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
     for (let i = 1; i <= Math.min(totalPages, MAX_PAGES); i++) {
       updateProgress(`Rasterizing vector page ${i} / ${Math.min(totalPages, MAX_PAGES)}...`);
       const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 1.5 }); 
+      // Increased scale to 2.0 for better OCR with Gemini Flash
+      const viewport = page.getViewport({ scale: 2.0 }); 
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
       
       if (context) {
         canvas.height = viewport.height;
         canvas.width = viewport.width;
-        // Cast to any to avoid type mismatch in some pdfjs-dist versions
         await page.render({ canvasContext: context, viewport: viewport } as any).promise;
         const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
         if (blob) pageBlobs.push(blob);
@@ -182,7 +167,6 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
 
       setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: 'analyzing', pagesBlob: pages } : j));
 
-      // BATCH CONFIGURATION
       const BATCH_SIZE = 3; 
       const CONCURRENCY_LIMIT = 2; 
       
@@ -282,7 +266,6 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
         </div>
       </header>
 
-      {/* Preview Modal */}
       {previewJob && previewJob.previewUrl && previewJob.results.length > 0 && (
           <ComparisonPreview 
              originalImage={previewJob.previewUrl} 
@@ -323,7 +306,6 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
         {jobs.map((job) => (
           <div key={job.id} className="relative bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col md:flex-row items-center gap-6 transition-all hover:shadow-lg hover:border-brand-200 group">
             
-            {/* Dismiss Button for Completed Jobs */}
             {job.status === 'completed' && (
                <button 
                   onClick={(e) => {
@@ -337,7 +319,6 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
                </button>
             )}
 
-            {/* Thumbnail */}
             <div className="w-16 h-20 bg-slate-100 rounded-lg shrink-0 overflow-hidden border border-slate-200 relative flex items-center justify-center group-hover:border-brand-300 transition-colors">
                {job.previewUrl ? (
                  <img src={job.previewUrl} alt="Preview" className="w-full h-full object-cover opacity-90" />
@@ -351,7 +332,6 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
                )}
             </div>
 
-            {/* Info */}
             <div className="flex-1 w-full">
                <div className="flex justify-between items-start mb-3">
                  <div>

@@ -17,19 +17,24 @@ export const analyzeBatch = async (images: Blob[]): Promise<StructuredDocument[]
   INPUT: A sequence of document page images.
   OUTPUT: A JSON Object containing a single key "pages", which is an ARRAY of page objects.
   
-  FOR EACH PAGE (Image):
-  1. **Structure**: Detect paragraphs, headers (h1-h3), and lists.
-  2. **Tables**: CRITICAL. If you see grid-like data, output type 'table'. Return rows as arrays of strings.
-  3. **Visuals**: Detect images, signatures, and stamps. Return accurate bounding boxes [ymin, xmin, ymax, xmax] (0-1000 scale).
+  CRITICAL RULES FOR OCR (Gemini 1.5 Flash Optimization):
+  1. **TEXT IS PRIORITY**: Do NOT return large parts of the page as "type": "image". You MUST extract the text as "paragraph", "heading", or "table".
+  2. **IMAGES**: Only use "type": "image" for actual photos, logos, or illustrations. DO NOT use it for text blocks.
+  3. **TABLES**: If you see a grid, it is a TABLE. Return 'data.rows'.
+  4. **COLOR**: Ignore text color unless it is explicitly Red or Blue. Default to "000000" (Black) for everything else. NEVER return "#FFFFFF" (White) text.
+  5. **Structure**: 
+     - Detect paragraphs.
+     - Detect headers (h1-h3).
+     - Detect lists.
 
-  CRITICAL RULES:
-  - The "pages" array MUST contain exactly ${images.length} entries, corresponding to the input images in order.
-  - If a page is blank, return an empty elements array for that index.
-  - Output valid JSON only.`;
+  FOR EACH PAGE (Image):
+  Output valid JSON elements array.
+  
+  CRITICAL: The "pages" array MUST contain exactly ${images.length} entries.`;
 
   // 2. Construct Multimodal content array
   const userContent: any[] = [
-    { type: "text", text: `Analyze these ${images.length} pages and return the JSON structure.` }
+    { type: "text", text: `Analyze these ${images.length} pages. Extract ALL text. Do not be lazy. Return the JSON structure.` }
   ];
 
   base64Images.forEach(b64 => {
@@ -40,7 +45,7 @@ export const analyzeBatch = async (images: Blob[]): Promise<StructuredDocument[]
   });
 
   const payload = {
-    model: "google/gemini-2.5-flash", 
+    model: "google/gemini-1.5-flash", 
     messages: [
       { role: "system", content: systemPrompt },
       { 
@@ -124,7 +129,8 @@ export const translateText = async (text: string, options: TranslationOptions): 
   `;
 
   const payload = {
-    model: "google/gemini-2.5-flash",
+    // SWITCHED TO 1.5 FLASH: Much cheaper for translation tasks too.
+    model: "google/gemini-1.5-flash",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: text }
@@ -193,7 +199,7 @@ async function optimizeImageForAI(file: File | Blob): Promise<string> {
         ctx.fillRect(0,0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8); // Increased quality slightly for text
         resolve(dataUrl.split(',')[1]);
       };
       img.onerror = () => reject(new Error("Failed to load image for optimization"));

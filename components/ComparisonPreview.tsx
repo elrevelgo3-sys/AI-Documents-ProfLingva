@@ -48,11 +48,12 @@ const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({ originalImage, da
     <div className="bg-white min-h-full p-8 font-serif text-slate-900 shadow-inner">
       {data.elements && data.elements.map((el, idx) => {
         // DEFENSIVE CODING: Use optional chaining (?.) and defaults (||) because AI might omit style object
+        // Force color to black for preview to avoid white-on-white text issues
         const style = {
             textAlign: (el.style?.alignment || 'left') as any,
             fontWeight: el.style?.bold ? 'bold' : 'normal',
             fontStyle: el.style?.italic ? 'italic' : 'normal',
-            color: el.style?.color || '#000000',
+            color: '#000000', // Override AI color for visibility in preview
             fontSize: `${(el.style?.font_size || 11) * 1.5}px` // Scale for screen, default to 11pt
         };
 
@@ -62,7 +63,7 @@ const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({ originalImage, da
                     {el.data.rows.map((row, rIdx) => (
                         <div key={rIdx} className="flex border-b border-slate-200 last:border-0">
                             {row.map((cell, cIdx) => (
-                                <div key={cIdx} className="flex-1 p-2 border-r border-slate-200 last:border-0 bg-slate-50">
+                                <div key={cIdx} className="flex-1 p-2 border-r border-slate-200 last:border-0 bg-slate-50 text-black">
                                     {cell}
                                 </div>
                             ))}
@@ -90,7 +91,6 @@ const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({ originalImage, da
   );
 
   const simulateHighlight = (type: string) => {
-      // In a real app, this would highlight bboxes. For demo, we toast.
       const toast = document.createElement('div');
       toast.className = 'fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-4 py-2 rounded-full text-sm font-bold shadow-xl animate-[slideIn_0.3s_ease-out] z-[60]';
       toast.innerText = `Highlighting all ${type}s...`;
