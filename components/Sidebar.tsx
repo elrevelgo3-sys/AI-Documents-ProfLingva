@@ -13,12 +13,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentMode, setMode }) => {
   const { t } = useLanguage();
 
   const navItems = [
-    { 
-      mode: AppMode.DOCUMENT, 
-      label: t('smartDigitization'), 
-      icon: FileText, 
-      desc: t('smartDigitizationDesc') 
-    },
+    // Smart Digitization hidden per request
     { 
       mode: AppMode.NATIVE, 
       label: t('instantNativePdf'), 

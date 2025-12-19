@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import DocAnalyzer from './components/DocAnalyzer';
+// import DocAnalyzer from './components/DocAnalyzer'; // Hidden for now
 import Sidebar from './components/Sidebar';
 import Translator from './components/Translator';
 import MiniGame from './components/MiniGame';
@@ -34,7 +34,8 @@ const playGentleNotification = () => {
 };
 
 const App: React.FC = () => {
-  const [mode, setMode] = useState<AppMode>(AppMode.DOCUMENT);
+  // Default to NATIVE since Smart Digitization is hidden
+  const [mode, setMode] = useState<AppMode>(AppMode.NATIVE);
   const [notification, setNotification] = useState<{show: boolean, message: string}>({ show: false, message: '' });
   const { language, setLanguage, t } = useLanguage();
 
@@ -70,9 +71,11 @@ const App: React.FC = () => {
 
         <div className="p-10 max-w-[1600px] mx-auto pt-20 md:pt-10">
           
+          {/* 
           <div style={{ display: mode === AppMode.DOCUMENT ? 'block' : 'none' }}>
             <DocAnalyzer onProcessingComplete={handleProcessingComplete} />
-          </div>
+          </div> 
+          */}
 
           <div style={{ display: mode === AppMode.NATIVE ? 'block' : 'none' }}>
             <NativePdfConverter />
