@@ -50,7 +50,7 @@ export const translations = {
     downloaded: 'Downloaded',
     
     // Translator
-    neuralEngine: 'Professional CAT System',
+    neuralEngine: 'AI Translation Core',
     contextAware: 'Context Aware',
     professionalCat: 'Glossary Enforcement',
     from: 'From',
@@ -60,7 +60,7 @@ export const translations = {
     processing: 'PROCESSING...',
     originalSource: 'Original Source',
     output: 'Output',
-    enterText: 'Enter text for professional translation...',
+    enterText: 'Enter text for neural translation...',
     chars: 'CHARS',
     copy: 'COPY',
     copied: 'COPIED',
@@ -125,7 +125,7 @@ export const translations = {
     downloaded: 'Скачано',
 
     // Translator
-    neuralEngine: 'Профессиональная CAT Система',
+    neuralEngine: 'AI Переводчик',
     contextAware: 'Контекстный анализ',
     professionalCat: 'Глоссарий',
     from: 'Из',
@@ -135,7 +135,7 @@ export const translations = {
     processing: 'ОБРАБОТКА...',
     originalSource: 'Оригинал',
     output: 'Результат',
-    enterText: 'Введите текст для профессионального перевода...',
+    enterText: 'Введите текст для нейро-перевода...',
     chars: 'СИМВ.',
     copy: 'КОПИРОВАТЬ',
     copied: 'СКОПИРОВАНО',

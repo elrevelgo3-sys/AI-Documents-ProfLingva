@@ -1,40 +1,80 @@
-
-import { StructuredDocument } from '../types';
+import { StructuredDocument, DocElement, ElementType } from '../types';
 
 const PROXY_URL = '/api/proxy';
 
 /**
- * Sends a batch of images (Blobs) to Gemini and gets a structured JSON array back.
- * Optimization: Saves tokens by sending the System Prompt only once for N images.
+ * Tries to repair a truncated JSON string by closing open brackets/braces.
+ * This is crucial for large pages where LLM might hit max output tokens.
  */
+function repairJson(jsonStr: string): string {
+    let repaired = jsonStr.trim();
+    // If it doesn't end with required closers, try to append them
+    // We expect the root to be an object { "e": [...] }
+    
+    // Check if it ends with "]}"
+    if (repaired.endsWith(']}')) return repaired;
+
+    // Simple heuristic stack repair
+    const stack = [];
+    for (const char of repaired) {
+        if (char === '{') stack.push('}');
+        if (char === '[') stack.push(']');
+        if (char === '}' || char === ']') {
+            const last = stack[stack.length - 1];
+            if (last === char) stack.pop();
+        }
+    }
+    
+    // Attempt to close quote if last char is not a closer or structure
+    if (!['}', ']', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'e', 'l', 's', '"'].includes(repaired.slice(-1))) {
+         repaired += '"'; 
+    }
+    
+    // Pop stack in reverse to close
+    while (stack.length > 0) {
+        repaired += stack.pop();
+    }
+    
+    return repaired;
+}
+
 export const analyzeBatch = async (images: Blob[]): Promise<StructuredDocument[]> => {
-  // 1. Optimize all images in parallel
+  // 1. Optimize images
   const base64Images = await Promise.all(images.map(img => optimizeImageForAI(img)));
 
-  const systemPrompt = `You are the "Universal Enterprise Digitizer".
-  Your mission is to convert the provided sequential document pages into structured JSON.
-
-  INPUT: A sequence of document page images.
-  OUTPUT: A JSON Object containing a single key "pages", which is an ARRAY of page objects.
+  // MINIFIED PROTOCOL:
+  // Instead of verbose objects, we ask for Arrays:
+  // [TYPE, CONTENT, [Ymin, Xmin, Ymax, Xmax], {STYLE}]
+  // This saves ~60% of tokens, preventing truncation errors while keeping coordinates.
+  const systemPrompt = `You are a Layout-Preserving PDF Digitizer.
   
-  CRITICAL RULES FOR OCR (Gemini 2.0 Flash Optimization):
-  1. **TEXT IS PRIORITY**: Do NOT return large parts of the page as "type": "image". You MUST extract the text as "paragraph", "heading", or "table".
-  2. **IMAGES**: Only use "type": "image" for actual photos, logos, or illustrations. DO NOT use it for text blocks.
-  3. **TABLES**: If you see a grid, it is a TABLE. Return 'data.rows'.
-  4. **COLOR**: Ignore text color unless it is explicitly Red or Blue. Default to "000000" (Black) for everything else. NEVER return "#FFFFFF" (White) text.
-  5. **Structure**: 
-     - Detect paragraphs.
-     - Detect headers (h1-h3).
-     - Detect lists.
-
-  FOR EACH PAGE (Image):
-  Output valid JSON elements array.
+  TASK: Convert the image into a Minified JSON Structure.
   
-  CRITICAL: The "pages" array MUST contain exactly ${images.length} entries.`;
+  OUTPUT FORMAT:
+  Return a JSON Object with a single key "e" (elements), containing an ARRAY of arrays.
+  Each element array must follow this EXACT order:
+  [
+     TYPE (string), 
+     CONTENT (string/null), 
+     BBOX (array of 4 integers 0-1000: [ymin, xmin, ymax, xmax]), 
+     STYLE (object/null)
+  ]
 
-  // 2. Construct Multimodal content array
+  TYPES: "p" (para), "h1", "h2", "h3", "tbl" (table), "img" (image/chart), "li" (list), "sig" (signature), "stmp" (stamp).
+  
+  STYLE OBJECT keys (optional, minimize usage): "b" (bold:1), "i" (italic:1), "sz" (size:pt), "c" (color:hex), "a" (align: l/c/r/j).
+
+  RULES:
+  1. **LAYOUT IS HOLY**: accurate BBOX is required for EVERYTHING.
+  2. **Tables**: For "tbl", CONTENT is a JSON string of a 2D array "[[r1c1, r1c2], [r2c1...]]".
+  3. **Images**: "img" has null CONTENT. BBOX is critical.
+  4. **Performance**: Do not use keys like "type" or "content". Use the array format to save tokens.
+  
+  Example Element: ["p", "Hello world", [10, 50, 20, 200], {"b":1}]`;
+
+  // We process 1 page at a time usually, but this supports batch logic
   const userContent: any[] = [
-    { type: "text", text: `Analyze these ${images.length} pages. Extract ALL text. Do not be lazy. Return the JSON structure.` }
+    { type: "text", text: `Digitize these ${images.length} pages. Use the Minified Array format.` }
   ];
 
   base64Images.forEach(b64 => {
@@ -45,7 +85,6 @@ export const analyzeBatch = async (images: Blob[]): Promise<StructuredDocument[]
   });
 
   const payload = {
-    // SWITCHED TO 2.0 FLASH: Better OCR, high speed, cost-effective.
     model: "google/gemini-2.0-flash-001", 
     messages: [
       { role: "system", content: systemPrompt },
@@ -63,33 +102,70 @@ export const analyzeBatch = async (images: Blob[]): Promise<StructuredDocument[]
   if (!content) throw new Error("AI returned empty content");
   
   content = content.replace(/```json/g, '').replace(/```/g, '').trim();
-  
-  const firstBrace = content.indexOf('{');
-  const lastBrace = content.lastIndexOf('}');
-  
-  if (firstBrace !== -1 && lastBrace !== -1) {
-    content = content.substring(firstBrace, lastBrace + 1);
+
+  // Try parsing. If fails, try repairing.
+  let parsed: any;
+  try {
+      parsed = JSON.parse(content);
+  } catch (e) {
+      console.warn("JSON invalid, attempting repair...", e);
+      const fixed = repairJson(content);
+      try {
+        parsed = JSON.parse(fixed);
+      } catch (e2) {
+        console.error("Repair failed. Content:", content);
+        throw new Error("Critical: Layout too complex, token limit reached.");
+      }
   }
 
-  try {
-    const parsed = JSON.parse(content);
-    if (parsed.pages && Array.isArray(parsed.pages)) {
-        return parsed.pages as StructuredDocument[];
-    }
-    // Fallback if AI forgets to wrap in "pages" key but returns a single object (edge case for batch size 1)
-    if (parsed.elements) {
-        return [parsed] as StructuredDocument[];
-    }
-    throw new Error("Invalid structure");
-  } catch (e) {
-    console.error("Failed to parse JSON batch response", content);
-    throw new Error("Invalid JSON response from AI. Batch processing failed.");
-  }
+  // De-minify logic: Convert arrays back to StructuredDocument
+  const results: StructuredDocument[] = [];
+  
+  // Handle root object (expected { "e": [...] } or "pages": [...])
+  const rawElements = parsed.e || parsed.elements || parsed.pages?.[0]?.elements || [];
+
+  const docElements: DocElement[] = rawElements.map((item: any) => {
+      // Item is [TYPE, CONTENT, BBOX, STYLE]
+      const [rawType, rawContent, rawBbox, rawStyle] = item;
+      
+      let type = rawType as ElementType;
+      // Fallback for AI hallucinating long names
+      if (rawType === 'paragraph') type = ElementType.PARAGRAPH;
+      if (rawType === 'table') type = ElementType.TABLE;
+      if (rawType === 'image') type = ElementType.IMAGE;
+
+      const element: DocElement = {
+          id: Math.random().toString(36).substr(2, 9),
+          type: type,
+          content: rawContent || '',
+          bbox: (Array.isArray(rawBbox) && rawBbox.length === 4 ? rawBbox : [0,0,0,0]) as [number, number, number, number],
+          style: {
+              bold: !!rawStyle?.b,
+              italic: !!rawStyle?.i,
+              font_size: rawStyle?.sz || 11,
+              color: rawStyle?.c || '#000000',
+              alignment: rawStyle?.a === 'c' ? 'center' : rawStyle?.a === 'r' ? 'right' : rawStyle?.a === 'j' ? 'justify' : 'left'
+          }
+      };
+
+      // Table parsing
+      if (type === ElementType.TABLE && typeof rawContent === 'string') {
+          try {
+              element.data = { rows: JSON.parse(rawContent) };
+              element.content = ''; // Clear string content for table
+          } catch(e) {
+              // Fallback if AI didn't stringify the array
+              if (Array.isArray(rawContent)) element.data = { rows: rawContent };
+          }
+      }
+
+      return element;
+  });
+
+  results.push({ elements: docElements });
+  return results;
 };
 
-/**
- * Legacy support for single document (wraps batch)
- */
 export const analyzeDocument = async (fileOrBlob: File | Blob): Promise<StructuredDocument> => {
     const results = await analyzeBatch([fileOrBlob]);
     return results[0];
@@ -104,33 +180,17 @@ interface TranslationOptions {
 }
 
 export const translateText = async (text: string, options: TranslationOptions): Promise<string> => {
+  // Keeping translation logic simple and robust
   const { sourceLang, targetLang, domain = 'General', tone = 'Professional', glossary = [] } = options;
 
   let glossaryInstruction = "";
   if (glossary.length > 0) {
-      glossaryInstruction = `
-      CRITICAL GLOSSARY INSTRUCTIONS:
-      You MUST strictly use the following terminology. Do not translate these terms differently:
-      ${glossary.map(g => `- "${g.term}" -> "${g.translation}"`).join('\n')}
-      `;
+      glossaryInstruction = `GLOSSARY:\n${glossary.map(g => `${g.term}=${g.translation}`).join('\n')}`;
   }
 
-  const systemPrompt = `
-  You are a professional linguist and subject-matter expert in the ${domain} field.
-  
-  TASK: Translate the input text from ${sourceLang} to ${targetLang}.
-  
-  GUIDELINES:
-  1. **Tone**: Maintain a ${tone} tone throughout the text.
-  2. **Accuracy**: Prioritize meaning and nuance over literal translation.
-  3. **Style**: Ensure natural flow in the target language.
-  ${glossaryInstruction}
-  
-  Return ONLY the translated text. Do not include explanations.
-  `;
+  const systemPrompt = `Translate from ${sourceLang} to ${targetLang}. Domain: ${domain}. Tone: ${tone}. ${glossaryInstruction}. Return only translation.`;
 
   const payload = {
-    // SWITCHED TO 2.0 FLASH: Excellent multilingual capabilities.
     model: "google/gemini-2.0-flash-001",
     messages: [
       { role: "system", content: systemPrompt },
@@ -150,7 +210,7 @@ async function callOpenRouter(body: any) {
   });
 
   if (response.status === 404) {
-    throw new Error("Proxy Endpoint Not Found. If running locally, please ensure the backend proxy is configured or use 'vercel dev'.");
+    throw new Error("Proxy Endpoint Not Found.");
   }
 
   if (!response.ok) {
@@ -161,12 +221,6 @@ async function callOpenRouter(body: any) {
   return response.json();
 }
 
-/**
- * Optimizes an image for AI processing.
- * 1. Resizes if dimension > 1536px (Gemini Flash optimal)
- * 2. Converts to JPEG with 0.7 quality
- * Returns base64 string without prefix.
- */
 async function optimizeImageForAI(file: File | Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -176,7 +230,7 @@ async function optimizeImageForAI(file: File | Blob): Promise<string> {
         const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
-        const MAX_DIM = 1536; // Optimal for Gemini Flash Vision
+        const MAX_DIM = 1536; 
 
         if (width > MAX_DIM || height > MAX_DIM) {
           if (width > height) {
@@ -191,22 +245,18 @@ async function optimizeImageForAI(file: File | Blob): Promise<string> {
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
-        if (!ctx) {
-            reject(new Error("Could not get canvas context"));
-            return;
-        }
+        if (!ctx) { reject(new Error("No context")); return; }
         
         ctx.fillStyle = "#FFFFFF";
         ctx.fillRect(0,0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8); // Increased quality slightly for text
-        resolve(dataUrl.split(',')[1]);
+        // Standard JPEG quality
+        resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
       };
-      img.onerror = () => reject(new Error("Failed to load image for optimization"));
+      img.onerror = () => reject(new Error("Image load failed"));
       img.src = readerEvent.target?.result as string;
     };
-    reader.onerror = reject;
     reader.readAsDataURL(file);
   });
 }

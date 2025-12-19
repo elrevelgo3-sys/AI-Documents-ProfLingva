@@ -29,7 +29,6 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { t } = useLanguage();
 
-  // CRITICAL FIX: Load PDF Worker via Blob to bypass CORS
   useEffect(() => {
     const setupWorker = async () => {
       const WORKER_CDN_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/build/pdf.worker.min.mjs';
@@ -126,7 +125,6 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
     for (let i = 1; i <= Math.min(totalPages, MAX_PAGES); i++) {
       updateProgress(`Rasterizing vector page ${i} / ${Math.min(totalPages, MAX_PAGES)}...`);
       const page = await pdf.getPage(i);
-      // Increased scale to 2.0 for better OCR with Gemini Flash
       const viewport = page.getViewport({ scale: 2.0 }); 
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
@@ -167,8 +165,11 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
 
       setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: 'analyzing', pagesBlob: pages } : j));
 
-      const BATCH_SIZE = 3; 
-      const CONCURRENCY_LIMIT = 2; 
+      // CRITICAL FIX: BATCH SIZE = 1
+      // We process 1 page per API request to ensure the JSON response doesn't get truncated by token limits.
+      const BATCH_SIZE = 1; 
+      // We allow 3 parallel requests to keep speed up.
+      const CONCURRENCY_LIMIT = 3; 
       
       const totalPages = pages.length;
       let processedCount = 0;
@@ -202,6 +203,7 @@ const DocAnalyzer: React.FC<DocAnalyzerProps> = ({ onProcessingComplete }) => {
 
          } catch (e) {
             console.error(`Batch starting at ${chunk.startIndex} failed`, e);
+            throw e; // Re-throw to fail the job if a page fails
          }
       };
 

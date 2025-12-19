@@ -1,38 +1,38 @@
-
 // --- Document Analysis Types ---
 
 export enum ElementType {
-  PARAGRAPH = 'paragraph',
-  HEADING_1 = 'heading_1',
-  HEADING_2 = 'heading_2',
-  HEADING_3 = 'heading_3',
-  TABLE = 'table',
-  IMAGE = 'image',
-  SIGNATURE = 'signature',
-  STAMP = 'stamp',
-  HEADER = 'header',
-  FOOTER = 'footer',
-  LIST_ITEM = 'list_item'
+  PARAGRAPH = 'p',      // Shortened for token efficiency
+  HEADING_1 = 'h1',
+  HEADING_2 = 'h2',
+  HEADING_3 = 'h3',
+  TABLE = 'tbl',
+  IMAGE = 'img',
+  SIGNATURE = 'sig',
+  STAMP = 'stmp',
+  LIST_ITEM = 'li',
+  HEADER = 'hdr',
+  FOOTER = 'ftr'
 }
 
 export interface ElementStyle {
-  font_name?: string;
-  font_size: number;
-  bold: boolean;
-  italic: boolean;
-  color: string;
-  alignment: 'left' | 'center' | 'right' | 'justify';
+  font_size?: number;
+  bold?: boolean;
+  italic?: boolean;
+  color?: string; // hex
+  alignment?: 'left' | 'center' | 'right' | 'justify';
 }
 
 export interface DocElement {
   id: string;
   type: ElementType;
-  content: string;
-  style: ElementStyle;
+  content: string; // The text content
+  style?: ElementStyle;
   data?: {
     rows: string[][];
   };
-  bbox: [number, number, number, number]; // [ymin, xmin, ymax, xmax] standard gemini
+  // BBOX IS BACK AND MANDATORY
+  // [ymin, xmin, ymax, xmax] in 0-1000 coordinate space
+  bbox: [number, number, number, number]; 
 }
 
 export interface StructuredDocument {
