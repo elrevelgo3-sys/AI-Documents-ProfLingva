@@ -1,3 +1,4 @@
+
 // --- Document Analysis Types ---
 
 export enum ElementType {
@@ -46,4 +47,5 @@ export enum AppMode {
   NATIVE = 'native',
   TRANSLATE = 'translate',
   GAME = 'game',
+  TABLE_ANALYZER = 'table_analyzer',
 }

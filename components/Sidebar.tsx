@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { AppMode } from '../types';
-import { FileText, Languages, Coffee, Zap, ShieldCheck } from 'lucide-react';
+import { FileText, Languages, Coffee, Zap, ShieldCheck, Table } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface SidebarProps {
@@ -19,6 +19,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentMode, setMode }) => {
       label: t('instantNativePdf'), 
       icon: Zap, 
       desc: t('instantNativePdfDesc') 
+    },
+    { 
+      mode: AppMode.TABLE_ANALYZER, 
+      label: t('tableAnalyzer'), 
+      icon: Table, 
+      desc: t('tableAnalyzerDesc') 
     },
     { 
       mode: AppMode.TRANSLATE, 

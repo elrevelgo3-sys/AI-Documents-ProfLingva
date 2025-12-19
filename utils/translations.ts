@@ -8,6 +8,8 @@ export const translations = {
     smartDigitizationDesc: 'AI Structure Recovery (Gemini)',
     instantNativePdf: 'Pro PDF Converter',
     instantNativePdfDesc: 'High-Fidelity Cloud Conversion',
+    tableAnalyzer: 'Table Reconstruction (Demo)',
+    tableAnalyzerDesc: 'Image-to-Table Recovery',
     neuralTranslation: 'Neural Translation',
     neuralTranslationDesc: 'Enterprise Linguistic Core',
     executiveLounge: 'Executive Lounge',
@@ -48,6 +50,17 @@ export const translations = {
     uploading: 'Uploading...',
     convertingCloud: 'Converting on Cloud...',
     downloaded: 'Downloaded',
+
+    // Table Analyzer
+    tableAnalyzerTitle: 'Table Reconstruction Core (Demo)',
+    tableAnalyzerSubtitle: 'Paste screenshot (Ctrl+V) -> Copy Table -> Paste to Word',
+    uploadTables: 'Paste Screenshot (Ctrl+V) or Drop Here',
+    supportsImages: 'Direct Clipboard Support active',
+    extracting: 'Reconstructing grid...',
+    tableReady: 'Reconstructed',
+    downloadTable: 'Download .docx',
+    copyTable: 'Copy Table',
+    tableCopied: 'Copied to Clipboard!',
     
     // Translator
     neuralEngine: 'AI Translation Core',
@@ -83,6 +96,8 @@ export const translations = {
     smartDigitizationDesc: 'AI Реконструкция (Gemini)',
     instantNativePdf: 'Pro PDF Конвертер',
     instantNativePdfDesc: 'Высокоточная облачная конвертация',
+    tableAnalyzer: 'Реконструкция Таблиц (Demo)',
+    tableAnalyzerDesc: 'Восстановление таблиц из фото',
     neuralTranslation: 'Нейро-перевод',
     neuralTranslationDesc: 'Лингвистическое ядро',
     executiveLounge: 'Комната Отдыха',
@@ -123,6 +138,17 @@ export const translations = {
     uploading: 'Загрузка...',
     convertingCloud: 'Конвертация в облаке...',
     downloaded: 'Скачано',
+
+    // Table Analyzer
+    tableAnalyzerTitle: 'Ядро Реконструкции Таблиц (Demo)',
+    tableAnalyzerSubtitle: 'Вставь скриншот (Ctrl+V) -> Скопируй таблицу -> Вставь в Word',
+    uploadTables: 'Нажми Ctrl+V чтобы вставить скриншот',
+    supportsImages: 'Работает напрямую из буфера обмена',
+    extracting: 'Восстановление сетки...',
+    tableReady: 'Готово',
+    downloadTable: 'Скачать .docx',
+    copyTable: 'Скопировать таблицу',
+    tableCopied: 'Скопировано в буфер!',
 
     // Translator
     neuralEngine: 'AI Переводчик',
